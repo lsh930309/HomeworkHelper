@@ -2,7 +2,7 @@
 import json
 import os
 from typing import List, Optional, Dict
-from data_models import ManagedProcess, GlobalSettings # 바로 위 파일에서 정의한 클래스 임포트
+from data_models import ManagedProcess, GlobalSettings, WebShortcut # 바로 위 파일에서 정의한 클래스 임포트
 
 class DataManager:
     """
@@ -15,9 +15,11 @@ class DataManager:
 
         self.settings_file_path = os.path.join(self.data_folder, "global_settings.json")
         self.processes_file_path = os.path.join(self.data_folder, "managed_processes.json")
+        self.web_shortcuts_file_path = os.path.join(self.data_folder, "web_shortcuts.json")
         
         self.global_settings: GlobalSettings = self._load_global_settings()
         self.managed_processes: List[ManagedProcess] = self._load_managed_processes()
+        self.web_shortcuts: List[WebShortcut] = self._load_web_shortcuts()
 
     def _load_global_settings(self) -> GlobalSettings:
         """파일에서 전역 설정을 로드합니다. 파일이 없으면 기본값으로 객체를 생성합니다."""
@@ -95,3 +97,97 @@ class DataManager:
             if process.id == process_id:
                 return process
         return None
+    
+    def _load_web_shortcuts(self) -> List[WebShortcut]:
+        """ 저장된 웹 바로 가기 목록을 불러옵니다. 파일이 없거나 비어있으면 기본값을 생성합니다. """
+        shortcuts = []
+        file_exists = os.path.exists(self.web_shortcuts_file_path)
+        
+        if file_exists:
+            try:
+                with open(self.web_shortcuts_file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    loaded_data = data.get("web_shortcuts")
+                    if isinstance(loaded_data, list):
+                        shortcuts = [WebShortcut.from_dict(item) for item in loaded_data]
+                    else:
+                        print(f"경고: '{self.web_shortcuts_file_path}' 파일 형식이 잘못되었거나 'web_shortcuts' 리스트가 없습니다. 기본값으로 대체합니다.")
+                        file_exists = False 
+            except (IOError, json.JSONDecodeError, TypeError) as e:
+                print(f"웹 바로 가기 파일 로드 오류: {e}. 기본값으로 대체합니다.")
+                file_exists = False
+        
+        if not file_exists or not shortcuts: # 파일이 없거나, 있었지만 비어있거나, 로드에 실패한 경우
+            print("웹 바로 가기 데이터가 없거나 로드에 실패하여 기본값을 생성합니다.")
+            default_shortcuts = [
+                WebShortcut(
+                    name="스타레일 출석",
+                    url="https://act.hoyolab.com/bbs/event/signin/hkrpg/e202303301540311.html?act_id=e202303301540311&bbs_auth_required=true&bbs_presentation_style=fullscreen&lang=ko-kr&utm_source=share&utm_medium=link&utm_campaign=web",
+                    refresh_time_str="05:00" # 예시: 매일 새벽 5시 초기화
+                ),
+                WebShortcut(
+                    name="젠존제 출석",
+                    url="https://act.hoyolab.com/bbs/event/signin/zzz/e202406031448091.html?act_id=e202406031448091&bbs_auth_required=true&bbs_presentation_style=fullscreen&lang=ko-kr&utm_source=share&utm_medium=link&utm_campaign=web",
+                    refresh_time_str="05:00" # 예시: 매일 새벽 5시 초기화
+                )
+            ]
+            # last_reset_timestamp는 초기에 None으로 설정됨 (WebShortcut 생성자 기본값)
+            shortcuts = default_shortcuts
+            self._save_web_shortcuts(shortcuts) 
+            
+        return shortcuts
+
+    def _save_web_shortcuts(self, shortcuts: List[WebShortcut]):
+        """ 웹 바로 가기 목록을 파일에 저장합니다. """
+        try:
+            with open(self.web_shortcuts_file_path, 'w', encoding='utf-8') as f:
+                # WebShortcut 객체를 딕셔너리로 변환하여 저장
+                json.dump({"web_shortcuts": [sc.to_dict() for sc in shortcuts]}, f, indent=4, ensure_ascii=False)
+        except IOError as e:
+            print(f"웹 바로 가기 파일 저장 오류: {e}")
+
+    def get_web_shortcuts(self) -> List[WebShortcut]:
+        """ 모든 웹 바로 가기 목록을 반환합니다. """
+        return list(self.web_shortcuts) # 복사본 반환
+
+    def add_web_shortcut(self, shortcut: WebShortcut) -> bool:
+        """ 새 웹 바로 가기를 추가합니다. """
+        if not isinstance(shortcut, WebShortcut):
+            return False
+        # 이름 중복 방지 (선택 사항)
+        # if any(sc.name == shortcut.name for sc in self.web_shortcuts):
+        #     print(f"오류: 웹 바로 가기 이름 '{shortcut.name}'이(가) 이미 존재합니다.")
+        #     return False
+        self.web_shortcuts.append(shortcut)
+        self._save_web_shortcuts(self.web_shortcuts)
+        print(f"웹 바로 가기 추가됨: {shortcut.name}")
+        return True
+
+    def get_web_shortcut_by_id(self, shortcut_id: str) -> Optional[WebShortcut]:
+        """ ID로 웹 바로 가기를 찾습니다. """
+        for shortcut in self.web_shortcuts:
+            if shortcut.id == shortcut_id:
+                return shortcut
+        return None
+
+    def update_web_shortcut(self, updated_shortcut: WebShortcut) -> bool:
+        """ 기존 웹 바로 가기 정보를 업데이트합니다. """
+        for i, shortcut in enumerate(self.web_shortcuts):
+            if shortcut.id == updated_shortcut.id:
+                self.web_shortcuts[i] = updated_shortcut
+                self._save_web_shortcuts(self.web_shortcuts)
+                print(f"웹 바로 가기 업데이트됨: {updated_shortcut.name}")
+                return True
+        print(f"오류: 업데이트할 웹 바로 가기 ID '{updated_shortcut.id}'을(를) 찾을 수 없습니다.")
+        return False
+
+    def remove_web_shortcut(self, shortcut_id: str) -> bool:
+        """ ID로 웹 바로 가기를 삭제합니다. """
+        original_len = len(self.web_shortcuts)
+        self.web_shortcuts = [sc for sc in self.web_shortcuts if sc.id != shortcut_id]
+        if len(self.web_shortcuts) < original_len:
+            self._save_web_shortcuts(self.web_shortcuts)
+            print(f"웹 바로 가기 ID '{shortcut_id}' 삭제됨.")
+            return True
+        print(f"오류: 삭제할 웹 바로 가기 ID '{shortcut_id}'을(를) 찾을 수 없습니다.")
+        return False

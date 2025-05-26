@@ -1,7 +1,7 @@
 # data_models.py
 import datetime
 import uuid # 프로세스 ID 생성을 위해 추가
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 
 class ManagedProcess:
     def __init__(self,
@@ -62,3 +62,44 @@ class GlobalSettings:
         if 'run_on_startup' not in data:
             data['run_on_startup'] = False
         return cls(**data)
+    
+class WebShortcut:
+    """ 사용자가 추가하는 웹 바로 가기 버튼의 정보를 담는 클래스 """
+    def __init__(self,
+                 id: Optional[str] = None,
+                 name: str = "",
+                 url: str = "",
+                 refresh_time_str: Optional[str] = None, # HH:MM 형식, 예: "10:00"
+                 last_reset_timestamp: Optional[float] = None 
+                ):
+        self.id = id if id else str(uuid.uuid4())
+        self.name = name
+        self.url = url
+        self.refresh_time_str = refresh_time_str
+        self.last_reset_timestamp = last_reset_timestamp
+
+    def __repr__(self):
+        return (f"WebShortcut(id='{self.id}', name='{self.name}', url='{self.url}', "
+                f"refresh_time_str='{self.refresh_time_str}', last_reset_timestamp={self.last_reset_timestamp})")
+
+    def to_dict(self) -> Dict[str, Any]:
+        """ 객체를 직렬화 가능한 딕셔너리로 변환합니다. """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "url": self.url,
+            "refresh_time_str": self.refresh_time_str,
+            "last_reset_timestamp": self.last_reset_timestamp,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'WebShortcut':
+        """ 딕셔너리에서 객체를 생성합니다. """
+        # 이전 버전과의 호환성을 위해 refresh_cycle_hours는 무시합니다.
+        return cls(
+            id=data.get("id"),
+            name=data.get("name", ""),
+            url=data.get("url", ""),
+            refresh_time_str=data.get("refresh_time_str"), # None일 수 있음
+            last_reset_timestamp=data.get("last_reset_timestamp"), # None일 수 있음
+        )

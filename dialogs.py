@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QDialog, QVBoxLayout, QLabel, QTableWidget,
     QDialogButtonBox, QHeaderView, QWidget, QFormLayout, QPushButton,
     QLineEdit, QHBoxLayout, QFileDialog, QMessageBox, QCheckBox,
-    QTimeEdit, QDoubleSpinBox
+    QTimeEdit, QDoubleSpinBox, QSpinBox
 )
 from PyQt6.QtCore import Qt, QTime
 from PyQt6.QtGui import QIcon # QIcon might be needed if dialogs use icons directly
@@ -205,11 +205,26 @@ class ProcessDialog(QDialog):
                 self.launch_path_edit.setText(exe_path)
 
     def browse_file(self, path_edit_widget: QLineEdit):
+        """ 파일 대화상자를 열어 파일을 선택하고, 선택된 파일의 경로를 입력 위젯에 설정합니다. """
+        # 파일 필터 수정: .url 파일을 포함하도록 변경
+        filters = [
+            "모든 지원 파일 (*.exe *.bat *.cmd *.lnk *.url)", # 기본 필터
+            "실행 파일 (*.exe *.bat *.cmd)",
+            "바로 가기 (*.lnk *.url)", # .url을 바로 가기에 명시적으로 포함
+            "모든 파일 (*)"
+        ]
+        filter_string = ";;".join(filters)
+        
+        # QFileDialog.getOpenFileName은 선택된 파일의 경로를 반환합니다.
+        # .lnk나 .url 파일의 경우, 해당 파일 자체의 경로가 반환됩니다 (대상의 경로가 아님).
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "파일 선택", "",
-            "실행 파일 (*.exe *.bat *.cmd);;바로 가기 (*.lnk);;모든 파일 (*)"
+            self, 
+            "파일 선택", 
+            "",  # 시작 디렉토리 (비워두면 마지막 사용 디렉토리 또는 기본값)
+            filter_string
         )
         if file_path:
+            # 사용자가 선택한 파일의 경로를 그대로 입력 필드에 설정합니다.
             path_edit_widget.setText(file_path)
 
     def validate_time_format(self, time_str: str) -> bool:
@@ -336,3 +351,95 @@ class GlobalSettingsDialog(QDialog):
             cycle_deadline_advance_notify_hours=self.cycle_advance_hours_spinbox.value(),
             run_on_startup=self.run_on_startup_checkbox.isChecked()
         )
+        
+class WebShortcutDialog(QDialog):
+    """ 웹 바로 가기 버튼 추가 또는 편집을 위한 다이얼로그 """
+    def __init__(self, parent: Optional[QWidget] = None, shortcut_data: Optional[Dict[str, Any]] = None):
+        super().__init__(parent)
+        
+        self.is_edit_mode = shortcut_data is not None
+        self.setWindowTitle("웹 바로 가기 편집" if self.is_edit_mode else "새 웹 바로 가기 추가")
+        self.setMinimumWidth(350)
+
+        self.layout = QFormLayout(self)
+
+        self.name_edit = QLineEdit()
+        self.url_edit = QLineEdit()
+        self.url_edit.setPlaceholderText("예: https://www.google.com")
+        
+        # 새로고침 시각 입력 필드 (HH:MM, 선택 사항)
+        self.refresh_time_edit = QLineEdit()
+        self.refresh_time_edit.setPlaceholderText("HH:MM (예: 09:00), 비워두면 기능 미적용")
+        # 선택적으로 QTimeEdit 사용 가능:
+        # self.refresh_time_edit = QTimeEdit()
+        # self.refresh_time_edit.setDisplayFormat("HH:mm")
+        # self.refresh_time_edit.setSpecialValueText("미설정") # QTimeEdit은 None 표현이 어려울 수 있음
+
+        self.layout.addRow("버튼 이름 (필수):", self.name_edit)
+        self.layout.addRow("웹 URL (필수):", self.url_edit)
+        self.layout.addRow("매일 초기화 시각 (선택):", self.refresh_time_edit) # 레이블 변경
+
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        self.layout.addRow(self.button_box)
+
+        self.button_box.accepted.connect(self.validate_and_accept)
+        self.button_box.rejected.connect(self.reject)
+
+        if self.is_edit_mode and shortcut_data:
+            self.name_edit.setText(shortcut_data.get("name", ""))
+            self.url_edit.setText(shortcut_data.get("url", ""))
+            # refresh_time_str 필드에서 값 로드
+            refresh_time_value = shortcut_data.get("refresh_time_str")
+            if refresh_time_value:
+                self.refresh_time_edit.setText(refresh_time_value)
+            # last_reset_timestamp는 이 다이얼로그에서 직접 수정하지 않음
+
+    def _is_valid_hhmm(self, time_str: str) -> bool:
+        """ HH:MM 형식인지 검사합니다. """
+        if not time_str: # 비어있는 경우 유효 (선택 사항이므로)
+            return True
+        try:
+            datetime.datetime.strptime(time_str, "%H:%M")
+            return True
+        except ValueError:
+            return False
+
+    def validate_and_accept(self):
+        name = self.name_edit.text().strip()
+        url = self.url_edit.text().strip()
+        refresh_time_str = self.refresh_time_edit.text().strip()
+
+        if not name:
+            QMessageBox.warning(self, "입력 오류", "버튼 이름을 입력해야 합니다.")
+            self.name_edit.setFocus(); return
+        
+        if not url:
+            QMessageBox.warning(self, "입력 오류", "웹 URL을 입력해야 합니다.")
+            self.url_edit.setFocus(); return
+        
+        if not (url.startswith("http://") or url.startswith("https://") or "://" in url):
+            reply = QMessageBox.warning(self, "URL 형식 경고",
+                                        f"입력하신 URL '{url}'이 일반적인 웹 주소 형식이 아닐 수 있습니다.\n"
+                                        "그래도 이 URL을 사용하시겠습니까?",
+                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                        QMessageBox.StandardButton.No)
+            if reply == QMessageBox.StandardButton.No:
+                self.url_edit.setFocus(); return
+        
+        if refresh_time_str and not self._is_valid_hhmm(refresh_time_str):
+            QMessageBox.warning(self, "입력 오류", "새로고침 시각 형식이 잘못되었습니다 (HH:MM 형식 또는 빈 값).")
+            self.refresh_time_edit.setFocus(); return
+            
+        self.accept()
+
+    def get_data(self) -> Optional[Dict[str, Any]]:
+        if self.result() == QDialog.DialogCode.Accepted:
+            refresh_time_str = self.refresh_time_edit.text().strip()
+            return {
+                "name": self.name_edit.text().strip(),
+                "url": self.url_edit.text().strip(),
+                # 비어있으면 None으로 저장, 아니면 HH:MM 문자열 저장
+                "refresh_time_str": refresh_time_str if refresh_time_str else None,
+                # last_reset_timestamp는 여기서 설정하지 않음 (기존 값 유지 또는 로직에서 초기화)
+            }
+        return None
