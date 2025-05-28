@@ -18,6 +18,7 @@ from dialogs import ProcessDialog, GlobalSettingsDialog, NumericTableWidgetItem,
 from tray_manager import TrayManager
 from gui_notification_handler import GuiNotificationHandler
 from instance_manager import run_with_single_instance_check, SingleInstanceApplication
+from utils import resource_path
 
 # --- 기타 로컬 유틸리티/데이터 모듈 임포트 ---
 from data_manager import DataManager
@@ -149,10 +150,12 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "URL 열기 실패", f"다음 URL을 여는 데 실패했습니다:\n{url}")
 
     def _set_window_icon(self):
-        """창 아이콘을 설정합니다. 'app_icon.png' 파일이 있으면 사용하고, 없으면 표준 아이콘을 사용합니다."""
-        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'app_icon.png')
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
+        """창 아이콘을 설정합니다."""
+        # .ico 파일 먼저 확인
+        icon_path_ico = resource_path(os.path.join('img', 'app_icon.ico'))
+        
+        if os.path.exists(icon_path_ico):
+            self.setWindowIcon(QIcon(icon_path_ico))
         else:
             self.setWindowIcon(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
 
