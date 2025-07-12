@@ -8,7 +8,7 @@ from typing import List, Optional, Dict, Any
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QVBoxLayout, QHBoxLayout, QWidget,
     QHeaderView, QPushButton, QSizePolicy, QFileIconProvider, QAbstractItemView,
-    QMessageBox, QMenu, QStyle
+    QMessageBox, QMenu, QStyle, QStatusBar, QMenuBar
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QUrl, QEvent
 from PyQt6.QtGui import QAction, QIcon, QColor, QDesktopServices
@@ -54,6 +54,10 @@ class MainWindow(QMainWindow):
         self.data_manager = data_manager
         self._instance_manager = instance_manager # 종료 시 정리를 위해 인스턴스 매니저 참조 저장
         self.launcher = Launcher()
+
+        # statusBar, menuBar 명시적 생성
+        self.setStatusBar(QStatusBar(self))
+        self.setMenuBar(QMenuBar(self))
 
         from process_monitor import ProcessMonitor # 순환 참조 방지를 위한 동적 임포트
         self.process_monitor = ProcessMonitor(self.data_manager)
@@ -126,7 +130,11 @@ class MainWindow(QMainWindow):
         self.web_button_refresh_timer.timeout.connect(self._refresh_web_button_states) # 타이머 타임아웃 시그널 연결
         self.web_button_refresh_timer.start(1000 * 60) # 1분마다 웹 버튼 상태 갱신 (1000ms * 60)
 
-        self.statusBar().showMessage("준비 완료.", 5000) # 상태 표시줄 메시지 설정
+        # statusBar()가 None이 아닌지 확인 후 메시지 설정
+        status_bar = self.statusBar()
+        if status_bar:
+            status_bar.showMessage("준비 완료.", 5000) # 상태 표시줄 메시지 설정
+
         self.apply_startup_setting() # 시작 프로그램 설정 적용
 
     def changeEvent(self, event: QEvent):
@@ -157,31 +165,45 @@ class MainWindow(QMainWindow):
         if os.path.exists(icon_path_ico):
             self.setWindowIcon(QIcon(icon_path_ico))
         else:
-            self.setWindowIcon(QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
+            style = self.style()
+            if style:
+                self.setWindowIcon(style.standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
 
     def _configure_table_header(self):
         """테이블 헤더의 크기 조절 모드 및 컬럼 너비를 설정합니다."""
         h = self.process_table.horizontalHeader()
-        h.setSectionResizeMode(self.COL_ICON, QHeaderView.ResizeMode.ResizeToContents) # 아이콘 컬럼: 내용에 맞게
-        h.setSectionResizeMode(self.COL_NAME, QHeaderView.ResizeMode.Stretch) # 이름 컬럼: 남은 공간 채우기
-        h.setSectionResizeMode(self.COL_LAST_PLAYED, QHeaderView.ResizeMode.ResizeToContents) # 마지막 플레이 컬럼: 내용에 맞게
-        h.setSectionResizeMode(self.COL_LAUNCH_BTN, QHeaderView.ResizeMode.ResizeToContents) # 실행 버튼 컬럼: 내용에 맞게
+        if h:
+            h.setSectionResizeMode(self.COL_ICON, QHeaderView.ResizeMode.ResizeToContents) # 아이콘 컬럼: 내용에 맞게
+            h.setSectionResizeMode(self.COL_NAME, QHeaderView.ResizeMode.Stretch) # 이름 컬럼: 남은 공간 채우기
+            h.setSectionResizeMode(self.COL_LAST_PLAYED, QHeaderView.ResizeMode.ResizeToContents) # 마지막 플레이 컬럼: 내용에 맞게
+            h.setSectionResizeMode(self.COL_LAUNCH_BTN, QHeaderView.ResizeMode.ResizeToContents) # 실행 버튼 컬럼: 내용에 맞게
         self.process_table.setColumnWidth(self.COL_ICON, 40) # 아이콘 컬럼 너비 고정
         self.process_table.setColumnWidth(self.COL_STATUS, 60) # 상태 컬럼 너비 고정
 
     def _create_menu_bar(self):
         """메뉴 바와 메뉴 항목들을 생성합니다."""
-        mb = self.menuBar(); fm = mb.addMenu("파일(&F)") # 파일 메뉴
+        mb = self.menuBar()
+        if not mb:
+            return
+        fm = mb.addMenu("파일(&F)") # 파일 메뉴
         try:
             # 표준 종료 아이콘 가져오기 시도
-            ei_px = self.style().standardPixmap(QStyle.StandardPixmap.SP_DialogCloseButton)
-            ei = QIcon.fromTheme("app-exit", QIcon(ei_px)) # 테마 아이콘 우선, 없으면 표준 아이콘 사용
+            style = self.style()
+            if style:
+                ei_px = style.standardPixmap(QStyle.StandardPixmap.SP_DialogCloseButton)
+                ei = QIcon.fromTheme("app-exit", QIcon(ei_px)) # 테마 아이콘 우선, 없으면 표준 아이콘 사용
+            else:
+                ei = QIcon()
         except AttributeError: # 예외 발생 시 빈 아이콘 사용 (안전 장치)
             ei = QIcon()
-        ea = QAction(ei, "종료(&X)", self); ea.setShortcut("Ctrl+Q"); ea.triggered.connect(self.initiate_quit_sequence); fm.addAction(ea) # 종료 액션
+        ea = QAction(ei, "종료(&X)", self); ea.setShortcut("Ctrl+Q"); ea.triggered.connect(self.initiate_quit_sequence)
+        if fm:
+            fm.addAction(ea) # 종료 액션
 
         sm = mb.addMenu("설정(&S)") # 설정 메뉴
-        gsa = QAction("전역 설정 변경...", self); gsa.triggered.connect(self.open_global_settings_dialog); sm.addAction(gsa) # 전역 설정 변경 액션
+        gsa = QAction("전역 설정 변경...", self); gsa.triggered.connect(self.open_global_settings_dialog)
+        if sm:
+            sm.addAction(gsa) # 전역 설정 변경 액션
 
     def open_global_settings_dialog(self):
         """전역 설정 대화 상자를 엽니다."""
@@ -191,7 +213,9 @@ class MainWindow(QMainWindow):
             upd_gs = dlg.get_updated_settings() # 업데이트된 설정 가져오기
             self.data_manager.global_settings = upd_gs # 데이터 매니저에 설정 업데이트
             self.data_manager.save_global_settings() # 설정 저장
-            self.statusBar().showMessage("전역 설정 저장됨.", 3000) # 상태 표시줄 메시지
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage("전역 설정 저장됨.", 3000) # 상태 표시줄 메시지
             self.apply_startup_setting() # 시작 프로그램 설정 적용
             self.populate_process_list_slot() # 프로세스 목록 새로고침
             self._refresh_web_button_states() # 웹 버튼 상태 새로고침 (전역 설정 변경이 웹 버튼에 영향을 줄 수 있는 경우)
@@ -199,15 +223,20 @@ class MainWindow(QMainWindow):
     def apply_startup_setting(self):
         """시작 프로그램 자동 실행 설정을 적용합니다."""
         run = self.data_manager.global_settings.run_on_startup # 자동 실행 여부 가져오기
+        status_bar = self.statusBar()
         if set_startup_registry(run): # 레지스트리 설정 시도
-            self.statusBar().showMessage(f"시작 시 자동 실행: {'활성' if run else '비활성'}", 3000)
+            if status_bar:
+                status_bar.showMessage(f"시작 시 자동 실행: {'활성' if run else '비활성'}", 3000)
         else:
-            self.statusBar().showMessage("자동 실행 설정 중 문제 발생 가능.", 3000)
+            if status_bar:
+                status_bar.showMessage("자동 실행 설정 중 문제 발생 가능.", 3000)
 
     def run_process_monitor_check(self):
         """실행 중인 프로세스를 확인하고 상태 변경 시 테이블을 새로고침합니다."""
         if self.process_monitor.check_and_update_statuses(): # 상태 변경 감지 시
-            self.statusBar().showMessage("프로세스 상태 변경 감지됨.", 2000)
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage("프로세스 상태 변경 감지됨.", 2000)
             self.request_table_refresh_signal.emit() # 테이블 새로고침 시그널 발생
 
     def run_scheduler_check(self):
@@ -272,14 +301,19 @@ class MainWindow(QMainWindow):
         self.process_table.setSortingEnabled(True) # 정렬 기능 다시 활성화
         self.process_table.sortByColumn(self.COL_NAME, Qt.SortOrder.AscendingOrder) # 이름 컬럼 기준 오름차순 정렬
         self.process_table.resizeColumnsToContents() # 컬럼 너비 내용에 맞게 조절
-        self.process_table.horizontalHeader().setSectionResizeMode(self.COL_NAME, QHeaderView.ResizeMode.Stretch) # 이름 컬럼은 남은 공간 채우도록 설정
+        header = self.process_table.horizontalHeader()
+        if header:
+            header.setSectionResizeMode(self.COL_NAME, QHeaderView.ResizeMode.Stretch) # 이름 컬럼은 남은 공간 채우도록 설정
 
     def show_table_context_menu(self, pos): # 게임 테이블용 컨텍스트 메뉴
         """게임 테이블의 항목에 대한 컨텍스트 메뉴를 표시합니다."""
         item = self.process_table.itemAt(pos) # 클릭 위치의 아이템 가져오기
         if not item: return # 아이템 없으면 반환
 
-        pid = self.process_table.item(item.row(), self.COL_NAME).data(Qt.ItemDataRole.UserRole) # 선택된 행의 프로세스 ID 가져오기
+        name_item = self.process_table.item(item.row(), self.COL_NAME)
+        if not name_item:
+            return
+        pid = name_item.data(Qt.ItemDataRole.UserRole) # 선택된 행의 프로세스 ID 가져오기
         if not pid: return # ID 없으면 반환
 
         menu = QMenu(self) # 컨텍스트 메뉴 생성
@@ -310,7 +344,9 @@ class MainWindow(QMainWindow):
                                        last_played_timestamp=p_edit.last_played_timestamp) # 마지막 플레이 시간은 유지
                 if self.data_manager.update_process(upd_p): # 프로세스 정보 업데이트
                     self.populate_process_list_slot() # 테이블 새로고침
-                    self.statusBar().showMessage(f"'{upd_p.name}' 수정 완료.", 3000)
+                    status_bar = self.statusBar()
+                    if status_bar:
+                        status_bar.showMessage(f"'{upd_p.name}' 수정 완료.", 3000)
                 else: QMessageBox.warning(self, "오류", "프로세스 수정 실패.")
 
     def handle_delete_action_for_row(self, pid:str): # 게임 삭제
@@ -325,7 +361,9 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.StandardButton.Yes: # 'Yes' 클릭 시
             if self.data_manager.remove_process(pid): # 프로세스 삭제
                 self.populate_process_list_slot() # 테이블 새로고침
-                self.statusBar().showMessage(f"'{p_del.name}' 삭제 완료.", 3000)
+                status_bar = self.statusBar()
+                if status_bar:
+                    status_bar.showMessage(f"'{p_del.name}' 삭제 완료.", 3000)
             else: QMessageBox.warning(self, "오류", "프로세스 삭제 실패.")
 
     def handle_launch_button_in_row(self, pid:str): # 게임 실행
@@ -336,10 +374,14 @@ class MainWindow(QMainWindow):
 
         if self.launcher.launch_process(p_launch.launch_path): # 프로세스 실행 시도
             self.system_notifier.send_notification(title="프로세스 실행", message=f"'{p_launch.name}' 실행함.", task_id_to_highlight=None)
-            self.statusBar().showMessage(f"'{p_launch.name}' 실행 시도.", 3000)
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage(f"'{p_launch.name}' 실행 시도.", 3000)
         else: # 실행 실패 시
             self.system_notifier.send_notification(title="실행 실패", message=f"'{p_launch.name}' 실행 실패. 로그 확인.", task_id_to_highlight=None)
-            self.statusBar().showMessage(f"'{p_launch.name}' 실행 실패.", 3000)
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage(f"'{p_launch.name}' 실행 실패.", 3000)
 
     def open_add_process_dialog(self): # "새 게임 추가" 버튼에 연결
         """새 게임 프로세스를 추가하는 대화 상자를 엽니다."""
@@ -358,7 +400,9 @@ class MainWindow(QMainWindow):
                                        is_mandatory_time_enabled=data["is_mandatory_time_enabled"])
                 self.data_manager.add_process(new_p) # 데이터 매니저에 프로세스 추가
                 self.populate_process_list_slot() # 테이블 새로고침
-                self.statusBar().showMessage(f"'{new_p.name}' 추가 완료.", 3000)
+                status_bar = self.statusBar()
+                if status_bar:
+                    status_bar.showMessage(f"'{new_p.name}' 추가 완료.", 3000)
 
     # --- 웹 바로 가기 버튼 관련 메소드들 ---
     def _clear_layout(self, layout: QHBoxLayout):
@@ -366,6 +410,8 @@ class MainWindow(QMainWindow):
         if layout is not None:
             while layout.count(): # 레이아웃에 아이템이 있는 동안 반복
                 item = layout.takeAt(0) # 첫 번째 아이템 가져오기 (제거됨)
+                if item is None:
+                    continue
                 widget = item.widget() # 아이템에서 위젯 가져오기
                 if widget is not None:
                     widget.deleteLater() # 위젯 나중에 삭제 (메모리 누수 방지)
@@ -411,7 +457,10 @@ class MainWindow(QMainWindow):
         # print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] 웹 버튼 상태 새로고침") # 디버그용 로그
         current_dt = datetime.datetime.now()
         for i in range(self.dynamic_web_buttons_layout.count()): # 레이아웃 내 모든 위젯에 대해 반복
-            widget = self.dynamic_web_buttons_layout.itemAt(i).widget()
+            item = self.dynamic_web_buttons_layout.itemAt(i)
+            if item is None:
+                continue
+            widget = item.widget()
             if isinstance(widget, QPushButton): # 위젯이 QPushButton인 경우
                 button = widget
                 shortcut_id = button.property("shortcut_id") # 버튼 속성에서 바로가기 ID 가져오기
@@ -471,7 +520,9 @@ class MainWindow(QMainWindow):
                                            refresh_time_str=data.get("refresh_time_str")) # refresh_time_str은 선택 사항
                 if self.data_manager.add_web_shortcut(new_shortcut): # 데이터 매니저에 추가
                     self._load_and_display_web_buttons() # 버튼 목록 새로고침
-                    self.statusBar().showMessage(f"웹 바로 가기 '{new_shortcut.name}' 추가됨.", 3000)
+                    status_bar = self.statusBar()
+                    if status_bar:
+                        status_bar.showMessage(f"웹 바로 가기 '{new_shortcut.name}' 추가됨.", 3000)
                 else:
                     QMessageBox.warning(self, "추가 실패", "웹 바로 가기 추가에 실패했습니다.")
 
@@ -513,7 +564,9 @@ class MainWindow(QMainWindow):
 
                 if self.data_manager.update_web_shortcut(updated_shortcut): # 데이터 매니저 통해 정보 업데이트
                     self._load_and_display_web_buttons() # 버튼 목록 새로고침
-                    self.statusBar().showMessage(f"웹 바로 가기 '{updated_shortcut.name}' 수정됨.", 3000)
+                    status_bar = self.statusBar()
+                    if status_bar:
+                        status_bar.showMessage(f"웹 바로 가기 '{updated_shortcut.name}' 수정됨.", 3000)
                 else:
                     QMessageBox.warning(self, "수정 실패", "웹 바로 가기 수정에 실패했습니다.")
 
@@ -532,7 +585,9 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.StandardButton.Yes: # 'Yes' 클릭 시
             if self.data_manager.remove_web_shortcut(shortcut_id): # 데이터 매니저 통해 삭제
                 self._load_and_display_web_buttons() # 버튼 목록 새로고침
-                self.statusBar().showMessage(f"웹 바로 가기 '{shortcut_to_delete.name}' 삭제됨.", 3000)
+                status_bar = self.statusBar()
+                if status_bar:
+                    status_bar.showMessage(f"웹 바로 가기 '{shortcut_to_delete.name}' 삭제됨.", 3000)
             else:
                 QMessageBox.warning(self, "삭제 실패", "웹 바로 가기 삭제에 실패했습니다.")
 
@@ -563,7 +618,11 @@ class MainWindow(QMainWindow):
 
     def _adjust_window_height_to_table(self):
         """테이블 내용에 맞춰 메인 윈도우의 높이를 자동으로 조절합니다."""
-        if not self.centralWidget() or not self.centralWidget().layout():
+        central_widget = self.centralWidget()
+        if not central_widget:
+            return
+        layout = central_widget.layout()
+        if not layout:
             return # 중앙 위젯이나 레이아웃 없으면 실행 불가
 
         # 테이블 행 높이를 내용에 맞게 먼저 조절 (주석 처리됨 - 필요시 활성화)
