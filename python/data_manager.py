@@ -3,16 +3,16 @@ import json
 import os
 from typing import List, Optional, Dict
 from data_models import ManagedProcess, GlobalSettings, WebShortcut # 바로 위 파일에서 정의한 클래스 임포트
-from utils import copy_shortcut_file, get_shortcuts_directory # 바로가기 복사 기능
+from utils import copy_shortcut_file, get_shortcuts_directory, get_base_path # 바로가기 복사 기능 및 경로 함수
 
 class DataManager:
     """
     ManagedProcess 객체들과 GlobalSettings 객체를 JSON 파일에서 로드하고 저장합니다.
     """
     def __init__(self, data_folder: str = "homework_helper_data"):
-        # 현재 스크립트 위치에서 homework_helper_data 경로 계산
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        self.data_folder = os.path.join(current_dir, data_folder)
+        # 실행 파일 기준 homework_helper_data 경로 계산
+        base_path = get_base_path()
+        self.data_folder = os.path.join(base_path, data_folder)
         
         if not os.path.exists(self.data_folder):
             os.makedirs(self.data_folder) # 데이터 저장 폴더 생성
