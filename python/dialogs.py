@@ -321,12 +321,14 @@ class GlobalSettingsDialog(QDialog):
         self.cycle_advance_hours_spinbox.setSingleStep(0.25)
         self.cycle_advance_hours_spinbox.setSuffix(" 시간 전")
         self.run_on_startup_checkbox = QCheckBox("Windows 시작 시 자동 실행")
+        self.lock_window_resize_checkbox = QCheckBox("창 크기 조절 잠금")
 
         self.layout.addRow("수면 시작 시각:", self.sleep_start_edit)
         self.layout.addRow("수면 종료 시각:", self.sleep_end_edit)
         self.layout.addRow("수면 보정 알림 (수면 시작 기준):", self.sleep_correction_hours_spinbox)
         self.layout.addRow("일반 주기 만료 알림 (마감 기준):", self.cycle_advance_hours_spinbox)
         self.layout.addRow(self.run_on_startup_checkbox)
+        self.layout.addRow(self.lock_window_resize_checkbox)
 
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.layout.addRow(self.button_box)
@@ -342,6 +344,7 @@ class GlobalSettingsDialog(QDialog):
         self.sleep_correction_hours_spinbox.setValue(self.current_settings.sleep_correction_advance_notify_hours)
         self.cycle_advance_hours_spinbox.setValue(self.current_settings.cycle_deadline_advance_notify_hours)
         self.run_on_startup_checkbox.setChecked(self.current_settings.run_on_startup)
+        self.lock_window_resize_checkbox.setChecked(self.current_settings.lock_window_resize)
 
     def get_updated_settings(self) -> GlobalSettings:
         return GlobalSettings(
@@ -349,7 +352,8 @@ class GlobalSettingsDialog(QDialog):
             sleep_end_time_str=self.sleep_end_edit.time().toString("HH:mm"),
             sleep_correction_advance_notify_hours=self.sleep_correction_hours_spinbox.value(),
             cycle_deadline_advance_notify_hours=self.cycle_advance_hours_spinbox.value(),
-            run_on_startup=self.run_on_startup_checkbox.isChecked()
+            run_on_startup=self.run_on_startup_checkbox.isChecked(),
+            lock_window_resize=self.lock_window_resize_checkbox.isChecked()
         )
         
 class WebShortcutDialog(QDialog):

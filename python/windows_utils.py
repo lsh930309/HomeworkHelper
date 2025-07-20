@@ -2,6 +2,7 @@
 import winreg
 import sys
 import os
+import winshell
 from typing import Optional
 
 APP_REGISTRY_NAME = "GameCycleHelper" # 레지스트리에 등록될 프로그램 이름
@@ -76,3 +77,95 @@ def get_startup_registry_status() -> bool:
     except Exception as e:
         print(f"시작 프로그램 상태 확인 중 오류: {e}")
         return False
+
+def get_startup_folder_path() -> Optional[str]:
+    """ Windows 시작 프로그램 폴더 경로를 반환합니다. """
+    if not is_windows():
+        return None
+    try:
+        # shell:startup 명령어로 열리는 폴더 경로
+        startup_path = winshell.startup()
+        print(f"시작 프로그램 폴더 경로: {startup_path}")
+        return startup_path
+    except Exception as e:
+        print(f"시작 프로그램 폴더 경로를 가져오는 중 오류: {e}")
+        # 대체 방법: 환경 변수를 사용한 경로
+        try:
+            appdata = os.environ.get('APPDATA')
+            if appdata:
+                startup_path = os.path.join(appdata, r"Microsoft\Windows\Start Menu\Programs\Startup")
+                print(f"대체 시작 프로그램 폴더 경로: {startup_path}")
+                return startup_path
+        except Exception as e2:
+            print(f"대체 경로 생성 중 오류: {e2}")
+        return None
+
+def set_startup_shortcut(enable: bool) -> bool:
+    """ Windows 시작 시 자동 실행을 위해 바로가기 파일을 생성/삭제합니다. """
+    print(f"set_startup_shortcut 호출됨 - enable: {enable}")
+    if not is_windows():
+        print("Windows 환경이 아니므로 시작 프로그램 등록을 건너뜁니다.")
+        return False
+
+    startup_folder = get_startup_folder_path()
+    if not startup_folder:
+        print("시작 프로그램 폴더 경로를 찾을 수 없습니다.")
+        return False
+
+    shortcut_name = f"{APP_REGISTRY_NAME}.lnk"
+    shortcut_path = os.path.join(startup_folder, shortcut_name)
+    
+    print(f"바로가기 파일 경로: {shortcut_path}")
+
+    try:
+        if enable:
+            # 바로가기 생성
+            interpreter_path, script_path = get_script_and_interpreter_path()
+            if not script_path or not interpreter_path:
+                print("자동 실행 경로를 구성할 수 없습니다.")
+                return False
+
+            # 따옴표 제거 (winshell은 따옴표 없이 경로를 받음)
+            interpreter_path = interpreter_path.strip('"')
+            script_path = script_path.strip('"')
+            
+            print(f"인터프리터 경로: {interpreter_path}")
+            print(f"스크립트 경로: {script_path}")
+
+            from win32com.client import Dispatch
+            shell = Dispatch('WScript.Shell')
+            shortcut = shell.CreateShortCut(shortcut_path)
+            shortcut.Targetpath = interpreter_path
+            shortcut.Arguments = script_path
+            shortcut.WorkingDirectory = os.path.dirname(script_path)
+            shortcut.IconLocation = script_path
+            shortcut.save()
+            
+            print(f"'{APP_REGISTRY_NAME}' 바로가기를 시작 프로그램에 생성했습니다: {shortcut_path}")
+            print(f"바로가기 파일이 실제로 생성되었는지 확인: {os.path.exists(shortcut_path)}")
+        else:
+            # 바로가기 삭제
+            if os.path.exists(shortcut_path):
+                os.remove(shortcut_path)
+                print(f"'{APP_REGISTRY_NAME}' 바로가기를 시작 프로그램에서 제거했습니다.")
+            else:
+                print(f"'{APP_REGISTRY_NAME}' 바로가기가 시작 프로그램에 존재하지 않습니다.")
+        
+        return True
+    except Exception as e:
+        print(f"시작 프로그램 바로가기 설정 중 오류: {e}")
+        return False
+
+def get_startup_shortcut_status() -> bool:
+    """ 현재 자동 실행 바로가기 등록 상태를 확인합니다. """
+    if not is_windows():
+        return False
+    
+    startup_folder = get_startup_folder_path()
+    if not startup_folder:
+        return False
+    
+    shortcut_name = f"{APP_REGISTRY_NAME}.lnk"
+    shortcut_path = os.path.join(startup_folder, shortcut_name)
+    
+    return os.path.exists(shortcut_path)

@@ -8,9 +8,9 @@ from typing import List, Optional, Dict, Any
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QVBoxLayout, QHBoxLayout, QWidget,
     QHeaderView, QPushButton, QSizePolicy, QFileIconProvider, QAbstractItemView,
-    QMessageBox, QMenu, QStyle, QStatusBar, QMenuBar
+    QMessageBox, QMenu, QStyle, QStatusBar, QMenuBar, QAbstractScrollArea, QCheckBox
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QUrl, QEvent
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QUrl, QEvent, QSize
 from PyQt6.QtGui import QAction, QIcon, QColor, QDesktopServices
 
 # --- 로컬 모듈 임포트 ---
@@ -24,7 +24,7 @@ from utils import resource_path
 from data_manager import DataManager
 from data_models import ManagedProcess, GlobalSettings, WebShortcut
 from process_utils import get_qicon_for_file
-from windows_utils import set_startup_registry
+from windows_utils import set_startup_shortcut, get_startup_shortcut_status
 from launcher import Launcher
 from notifier import Notifier
 from scheduler import Scheduler, PROC_STATE_INCOMPLETE, PROC_STATE_COMPLETED, PROC_STATE_RUNNING
@@ -72,10 +72,11 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle(QApplication.applicationName() or "숙제 관리자") # 창 제목 설정
         self.setMinimumWidth(500) # 최소 너비 설정
-        self.setGeometry(100, 100, 500, 400) # 창 초기 위치 및 크기 설정 (웹 버튼 고려하여 너비 확장)
+        self.setGeometry(100, 100, 500, 400) # 창 초기 위치 및 크기 설정 (고정 너비)
         self._set_window_icon() # 창 아이콘 설정
         self.tray_manager = TrayManager(self) # 트레이 아이콘 관리자 생성
         self._create_menu_bar() # 메뉴 바 생성
+        self._add_always_on_top_checkbox() # 항상 위 체크박스 추가
 
         # --- UI 구성 ---
         central_widget = QWidget(self) # 중앙 위젯 생성
@@ -90,6 +91,7 @@ class MainWindow(QMainWindow):
         self.top_button_area_layout.addStretch(1) # 버튼들 사이의 공간 확장
 
         self.dynamic_web_buttons_layout = QHBoxLayout() # 동적 웹 버튼들을 위한 수평 레이아웃
+        self.dynamic_web_buttons_layout.setSpacing(3) # 버튼 간격을 더 작게 설정
         self.top_button_area_layout.addLayout(self.dynamic_web_buttons_layout) # 상단 버튼 영역에 동적 웹 버튼 레이아웃 추가
 
         self.add_web_shortcut_button = QPushButton("+") # 웹 바로가기 추가 버튼 생성
@@ -114,17 +116,25 @@ class MainWindow(QMainWindow):
         self.process_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection) # 선택 불가 설정
         self.process_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu) # 컨텍스트 메뉴 정책 설정
         self.process_table.customContextMenuRequested.connect(self.show_table_context_menu) # 컨텍스트 메뉴 요청 시그널 연결
+        
+        # 테이블 크기 정책 설정 - 스크롤바 없이 내용에 맞게 조절
+        self.process_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.process_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        
         main_layout.addWidget(self.process_table) # 메인 레이아웃에 테이블 추가
 
         # 초기 데이터 로드 및 UI 업데이트
         self.populate_process_list() # 프로세스 목록 채우기
         self._load_and_display_web_buttons() # 웹 바로가기 버튼 로드 및 표시
-        self._adjust_window_height_to_table() # 테이블 내용에 맞게 창 높이 조절
+        self._adjust_window_height_for_table_rows() # 테이블 내용에 맞게 창 높이 조절
+        
+        # 창 크기 조절 잠금 설정 적용
+        self._apply_window_resize_lock()
 
         # 시그널 및 타이머 설정
         self.request_table_refresh_signal.connect(self.populate_process_list_slot) # 테이블 새로고침 시그널 연결
-        self.monitor_timer = QTimer(self); self.monitor_timer.timeout.connect(self.run_process_monitor_check); self.monitor_timer.start(5000) # 프로세스 모니터 타이머 (5초)
-        self.scheduler_timer = QTimer(self); self.scheduler_timer.timeout.connect(self.run_scheduler_check); self.scheduler_timer.start(1000) # 스케줄러 타이머 (1초)
+        self.monitor_timer = QTimer(self); self.monitor_timer.timeout.connect(self.run_process_monitor_check); self.monitor_timer.start(10000) # 프로세스 모니터 타이머 (10초)
+        self.scheduler_timer = QTimer(self); self.scheduler_timer.timeout.connect(self.run_scheduler_check); self.scheduler_timer.start(5000) # 스케줄러 타이머 (5초)
 
         self.web_button_refresh_timer = QTimer(self) # 웹 버튼 상태 새로고침 타이머
         self.web_button_refresh_timer.timeout.connect(self._refresh_web_button_states) # 타이머 타임아웃 시그널 연결
@@ -133,7 +143,7 @@ class MainWindow(QMainWindow):
         # statusBar()가 None이 아닌지 확인 후 메시지 설정
         status_bar = self.statusBar()
         if status_bar:
-            status_bar.showMessage("준비 완료.", 5000) # 상태 표시줄 메시지 설정
+            status_bar.showMessage("준비 완료.", 5000) # 상태 표시줄 메시지
 
         self.apply_startup_setting() # 시작 프로그램 설정 적용
 
@@ -177,8 +187,7 @@ class MainWindow(QMainWindow):
             h.setSectionResizeMode(self.COL_NAME, QHeaderView.ResizeMode.Stretch) # 이름 컬럼: 남은 공간 채우기
             h.setSectionResizeMode(self.COL_LAST_PLAYED, QHeaderView.ResizeMode.ResizeToContents) # 마지막 플레이 컬럼: 내용에 맞게
             h.setSectionResizeMode(self.COL_LAUNCH_BTN, QHeaderView.ResizeMode.ResizeToContents) # 실행 버튼 컬럼: 내용에 맞게
-        self.process_table.setColumnWidth(self.COL_ICON, 40) # 아이콘 컬럼 너비 고정
-        self.process_table.setColumnWidth(self.COL_STATUS, 60) # 상태 컬럼 너비 고정
+            h.setSectionResizeMode(self.COL_STATUS, QHeaderView.ResizeMode.ResizeToContents) # 상태 컬럼: 내용에 맞게
 
     def _create_menu_bar(self):
         """메뉴 바와 메뉴 항목들을 생성합니다."""
@@ -205,6 +214,75 @@ class MainWindow(QMainWindow):
         if sm:
             sm.addAction(gsa) # 전역 설정 변경 액션
 
+    def _add_always_on_top_checkbox(self):
+        """메뉴바 오른쪽에 '항상 위' 체크박스를 추가합니다."""
+        menu_bar = self.menuBar()
+        if not menu_bar:
+            return
+            
+        # 메뉴바 오른쪽에 위젯을 추가하기 위한 컨테이너 위젯 생성
+        right_widget = QWidget()
+        right_layout = QHBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)  # 여백 제거
+        right_layout.setSpacing(5)  # 간격 설정
+        right_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)  # 세로 중앙 정렬
+        
+        # 항상 위 체크박스 생성
+        self.always_on_top_checkbox = QCheckBox("항상 위")
+        self.always_on_top_checkbox.setToolTip("창을 다른 창들보다 항상 위에 표시합니다.")
+        self.always_on_top_checkbox.toggled.connect(self._toggle_always_on_top)
+        
+        # 체크박스를 메뉴 텍스트와 같은 높이에 정렬하기 위한 스타일 설정
+        self.always_on_top_checkbox.setStyleSheet("""
+            QCheckBox {
+                margin: 0px;
+                padding: 0px;
+                border: none;
+                background: transparent;
+                margin-top: 6px;
+            }
+            QCheckBox::indicator {
+                width: 13px;
+                height: 13px;
+                margin-top: 5px;
+            }
+        """)
+        
+        right_layout.addWidget(self.always_on_top_checkbox)
+        right_layout.addStretch()  # 오른쪽 여백 추가
+        
+        # 메뉴바에 위젯 추가
+        menu_bar.setCornerWidget(right_widget, Qt.Corner.TopRightCorner)
+        
+        # 초기 상태 설정 (전역 설정에서 로드)
+        self._load_always_on_top_setting()
+
+    def _toggle_always_on_top(self, checked: bool):
+        """항상 위 설정을 토글합니다."""
+        if checked:
+            self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+            print("항상 위 모드 활성화됨")
+        else:
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
+            print("항상 위 모드 비활성화됨")
+        
+        # 창 플래그 변경 후 창을 다시 표시해야 함
+        self.show()
+        
+        # 전역 설정에 저장
+        self.data_manager.global_settings.always_on_top = checked
+        self.data_manager.save_global_settings()
+
+    def _load_always_on_top_setting(self):
+        """전역 설정에서 항상 위 설정을 로드합니다."""
+        always_on_top = self.data_manager.global_settings.always_on_top
+        self.always_on_top_checkbox.setChecked(always_on_top)
+        
+        # 초기 창 플래그 설정
+        if always_on_top:
+            self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+            print("항상 위 모드 초기 활성화됨")
+
     def open_global_settings_dialog(self):
         """전역 설정 대화 상자를 엽니다."""
         cur_gs = self.data_manager.global_settings # 현재 전역 설정 가져오기
@@ -217,14 +295,26 @@ class MainWindow(QMainWindow):
             if status_bar:
                 status_bar.showMessage("전역 설정 저장됨.", 3000) # 상태 표시줄 메시지
             self.apply_startup_setting() # 시작 프로그램 설정 적용
-            self.populate_process_list_slot() # 프로세스 목록 새로고침
+            self.populate_process_list() # 전체 테이블 새로고침 (전역 설정 변경)
             self._refresh_web_button_states() # 웹 버튼 상태 새로고침 (전역 설정 변경이 웹 버튼에 영향을 줄 수 있는 경우)
+            self._adjust_window_height_for_table_rows() # 창 높이 조절
+            self._update_window_resize_lock() # 창 크기 조절 잠금 업데이트
+            
+            # 시작 프로그램 상태 확인 및 메시지 표시
+            current_status = get_startup_shortcut_status()
+            status_bar = self.statusBar()
+            if status_bar:
+                if current_status:
+                    status_bar.showMessage("시작 프로그램에 등록되어 있습니다.", 3000)
+                else:
+                    status_bar.showMessage("시작 프로그램에 등록되어 있지 않습니다.", 3000)
 
     def apply_startup_setting(self):
         """시작 프로그램 자동 실행 설정을 적용합니다."""
         run = self.data_manager.global_settings.run_on_startup # 자동 실행 여부 가져오기
+        print(f"apply_startup_setting 호출됨 - run_on_startup: {run}")
         status_bar = self.statusBar()
-        if set_startup_registry(run): # 레지스트리 설정 시도
+        if set_startup_shortcut(run): # 바로가기 설정 시도
             if status_bar:
                 status_bar.showMessage(f"시작 시 자동 실행: {'활성' if run else '비활성'}", 3000)
         else:
@@ -237,17 +327,82 @@ class MainWindow(QMainWindow):
             status_bar = self.statusBar()
             if status_bar:
                 status_bar.showMessage("프로세스 상태 변경 감지됨.", 2000)
-            self.request_table_refresh_signal.emit() # 테이블 새로고침 시그널 발생
+            self.update_process_statuses_only() # 상태 컬럼만 업데이트
 
     def run_scheduler_check(self):
-        """스케줄러 검사를 실행하고 게임 테이블 및 웹 버튼 상태를 새로고침합니다."""
+        """스케줄러 검사를 실행하고 상태 변경이 있을 때만 테이블을 업데이트합니다."""
+        # 스케줄러 검사 실행 (알림 발송 등)
         self.scheduler.run_all_checks() # 게임 관련 스케줄 검사
-        self.request_table_refresh_signal.emit() # 게임 테이블 새로고침
+        
+        # 상태 변경이 있을 때만 업데이트 (불필요한 UI 업데이트 방지)
+        # 스케줄러는 주로 알림 발송을 담당하므로, UI 업데이트는 프로세스 모니터에서 처리
         # 웹 버튼 상태는 별도 타이머(_refresh_web_button_states)로 주기적으로 체크하므로 여기서 호출하지 않음
 
     def populate_process_list_slot(self):
         """테이블 새로고침 시그널에 연결된 슬롯입니다."""
         self.populate_process_list()
+
+    def update_process_statuses_only(self):
+        """프로세스 상태 컬럼만 업데이트합니다. 버튼은 유지하여 포커스 문제를 방지합니다."""
+        if not hasattr(self, 'process_table') or not self.process_table:
+            return
+            
+        processes = self.data_manager.managed_processes
+        now_dt = datetime.datetime.now()
+        gs = self.data_manager.global_settings
+        palette = self.process_table.palette()
+        df_bg, df_fg = palette.base(), palette.text()
+
+        # 현재 테이블의 행 수와 프로세스 수가 다르면 전체 새로고침 필요
+        if self.process_table.rowCount() != len(processes):
+            self.populate_process_list()
+            return
+
+        has_changes = False
+        for r, p in enumerate(processes):
+            # 이름 컬럼에서 프로세스 ID 확인
+            name_item = self.process_table.item(r, self.COL_NAME)
+            if not name_item or name_item.data(Qt.ItemDataRole.UserRole) != p.id:
+                # ID가 다르면 전체 새로고침 필요
+                self.populate_process_list()
+                return
+
+            # 상태 컬럼만 업데이트
+            st_str = self.scheduler.determine_process_visual_status(p, now_dt, gs)
+            st_item = self.process_table.item(r, self.COL_STATUS)
+            if st_item and st_item.text() != st_str:
+                st_item.setText(st_str)
+                st_item.setForeground(df_fg)  # 기본 글자색 설정
+
+                # 상태에 따른 배경색 설정
+                if st_str == PROC_STATE_RUNNING:
+                    st_item.setBackground(self.COLOR_RUNNING)
+                    st_item.setForeground(QColor("black"))
+                elif st_str == PROC_STATE_INCOMPLETE:
+                    st_item.setBackground(self.COLOR_INCOMPLETE)
+                elif st_str == PROC_STATE_COMPLETED:
+                    st_item.setBackground(self.COLOR_COMPLETED)
+                else:
+                    st_item.setBackground(df_bg)
+                has_changes = True
+
+            # 마지막 플레이 컬럼도 업데이트 (타임스탬프가 변경되었을 수 있음)
+            lp_str = "기록 없음"
+            if p.last_played_timestamp:
+                try:
+                    lp_str = datetime.datetime.fromtimestamp(p.last_played_timestamp).strftime("%m월 %d일 %H시 %M분")
+                except:
+                    lp_str = "변환 오류"
+            lp_item = self.process_table.item(r, self.COL_LAST_PLAYED)
+            if lp_item and lp_item.text() != lp_str:
+                lp_item.setText(lp_str)
+                has_changes = True
+
+        # 실제 변경사항이 있을 때만 상태바 메시지 표시
+        if has_changes:
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage("프로세스 상태 업데이트됨.", 2000)
 
     def populate_process_list(self):
         """관리 대상 프로세스 목록을 테이블에 채웁니다."""
@@ -300,7 +455,9 @@ class MainWindow(QMainWindow):
 
         self.process_table.setSortingEnabled(True) # 정렬 기능 다시 활성화
         self.process_table.sortByColumn(self.COL_NAME, Qt.SortOrder.AscendingOrder) # 이름 컬럼 기준 오름차순 정렬
-        self.process_table.resizeColumnsToContents() # 컬럼 너비 내용에 맞게 조절
+        
+        # 다른 컬럼들을 내용에 맞게 조정하고, 이름 컬럼은 남은 공간 채우기
+        self.process_table.resizeColumnsToContents() # 먼저 모든 컬럼을 내용에 맞게 조정
         header = self.process_table.horizontalHeader()
         if header:
             header.setSectionResizeMode(self.COL_NAME, QHeaderView.ResizeMode.Stretch) # 이름 컬럼은 남은 공간 채우도록 설정
@@ -343,7 +500,8 @@ class MainWindow(QMainWindow):
                                        is_mandatory_time_enabled=data["is_mandatory_time_enabled"],
                                        last_played_timestamp=p_edit.last_played_timestamp) # 마지막 플레이 시간은 유지
                 if self.data_manager.update_process(upd_p): # 프로세스 정보 업데이트
-                    self.populate_process_list_slot() # 테이블 새로고침
+                    self.populate_process_list() # 전체 테이블 새로고침 (프로세스 정보 변경)
+                    self._adjust_window_height_for_table_rows() # 창 높이 조절
                     status_bar = self.statusBar()
                     if status_bar:
                         status_bar.showMessage(f"'{upd_p.name}' 수정 완료.", 3000)
@@ -360,7 +518,8 @@ class MainWindow(QMainWindow):
                                      QMessageBox.StandardButton.No) # 기본 선택은 'No'
         if reply == QMessageBox.StandardButton.Yes: # 'Yes' 클릭 시
             if self.data_manager.remove_process(pid): # 프로세스 삭제
-                self.populate_process_list_slot() # 테이블 새로고침
+                self.populate_process_list() # 전체 테이블 새로고침 (프로세스 삭제)
+                self._adjust_window_height_for_table_rows() # 창 높이 조절
                 status_bar = self.statusBar()
                 if status_bar:
                     status_bar.showMessage(f"'{p_del.name}' 삭제 완료.", 3000)
@@ -377,6 +536,8 @@ class MainWindow(QMainWindow):
             status_bar = self.statusBar()
             if status_bar:
                 status_bar.showMessage(f"'{p_launch.name}' 실행 시도.", 3000)
+            # 실행 성공 시 즉시 상태 업데이트
+            self.update_process_statuses_only()
         else: # 실행 실패 시
             self.system_notifier.send_notification(title="실행 실패", message=f"'{p_launch.name}' 실행 실패. 로그 확인.", task_id_to_highlight=None)
             status_bar = self.statusBar()
@@ -399,7 +560,8 @@ class MainWindow(QMainWindow):
                                        user_cycle_hours=data["user_cycle_hours"], mandatory_times_str=data["mandatory_times_str"],
                                        is_mandatory_time_enabled=data["is_mandatory_time_enabled"])
                 self.data_manager.add_process(new_p) # 데이터 매니저에 프로세스 추가
-                self.populate_process_list_slot() # 테이블 새로고침
+                self.populate_process_list() # 전체 테이블 새로고침 (프로세스 추가)
+                self._adjust_window_height_for_table_rows() # 창 높이 조절
                 status_bar = self.statusBar()
                 if status_bar:
                     status_bar.showMessage(f"'{new_p.name}' 추가 완료.", 3000)
@@ -478,6 +640,8 @@ class MainWindow(QMainWindow):
 
         for sc_data in shortcuts: # 각 바로가기에 대해 버튼 생성
             button = QPushButton(sc_data.name) # 버튼 텍스트는 바로가기 이름
+            # 버튼 크기를 텍스트에 맞게 최적화
+            button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
             # 버튼 클릭 시 _handle_web_button_clicked 메소드 호출 (ID와 URL 전달)
             button.clicked.connect(functools.partial(self._handle_web_button_clicked, sc_data.id, sc_data.url))
             button.setProperty("shortcut_id", sc_data.id) # 버튼에 바로가기 ID 저장 (나중에 참조용)
@@ -488,6 +652,9 @@ class MainWindow(QMainWindow):
             state = self._determine_web_button_state(sc_data, current_dt) # 버튼 초기 상태 결정
             self._apply_button_style(button, state) # 스타일 적용
             self.dynamic_web_buttons_layout.addWidget(button) # 레이아웃에 버튼 추가
+        
+        # 웹 버튼 로드 완료 후 창 너비 조절
+        self._adjust_window_width_for_web_buttons()
 
     def _handle_web_button_clicked(self, shortcut_id: str, url: str):
         """웹 바로가기 버튼 클릭 시 호출됩니다. URL을 열고, 필요한 경우 상태를 업데이트합니다."""
@@ -520,6 +687,7 @@ class MainWindow(QMainWindow):
                                            refresh_time_str=data.get("refresh_time_str")) # refresh_time_str은 선택 사항
                 if self.data_manager.add_web_shortcut(new_shortcut): # 데이터 매니저에 추가
                     self._load_and_display_web_buttons() # 버튼 목록 새로고침
+                    self._adjust_window_width_for_web_buttons() # 창 너비 조절
                     status_bar = self.statusBar()
                     if status_bar:
                         status_bar.showMessage(f"웹 바로 가기 '{new_shortcut.name}' 추가됨.", 3000)
@@ -564,6 +732,7 @@ class MainWindow(QMainWindow):
 
                 if self.data_manager.update_web_shortcut(updated_shortcut): # 데이터 매니저 통해 정보 업데이트
                     self._load_and_display_web_buttons() # 버튼 목록 새로고침
+                    self._adjust_window_width_for_web_buttons() # 창 너비 조절
                     status_bar = self.statusBar()
                     if status_bar:
                         status_bar.showMessage(f"웹 바로 가기 '{updated_shortcut.name}' 수정됨.", 3000)
@@ -585,6 +754,7 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.StandardButton.Yes: # 'Yes' 클릭 시
             if self.data_manager.remove_web_shortcut(shortcut_id): # 데이터 매니저 통해 삭제
                 self._load_and_display_web_buttons() # 버튼 목록 새로고침
+                self._adjust_window_width_for_web_buttons() # 창 너비 조절
                 status_bar = self.statusBar()
                 if status_bar:
                     status_bar.showMessage(f"웹 바로 가기 '{shortcut_to_delete.name}' 삭제됨.", 3000)
@@ -616,42 +786,219 @@ class MainWindow(QMainWindow):
         app_instance = QApplication.instance()
         if app_instance: app_instance.quit()
 
-    def _adjust_window_height_to_table(self):
-        """테이블 내용에 맞춰 메인 윈도우의 높이를 자동으로 조절합니다."""
-        central_widget = self.centralWidget()
-        if not central_widget:
-            return
-        layout = central_widget.layout()
-        if not layout:
-            return # 중앙 위젯이나 레이아웃 없으면 실행 불가
+    def _adjust_window_size_to_content(self):
+        """테이블 내용에 맞춰 메인 윈도우의 높이를 자동으로 조절합니다. 너비는 고정합니다."""
+        # 테이블 행 높이를 내용에 맞게 조절
+        if self.process_table.rowCount() > 0:
+            self.process_table.resizeRowsToContents()
 
-        # 테이블 행 높이를 내용에 맞게 먼저 조절 (주석 처리됨 - 필요시 활성화)
-        # if self.process_table.rowCount() > 0:
-        #     self.process_table.resizeRowsToContents()
-
+        # 테이블 내용 높이 계산
         table_content_height = 0
-
+        
         # 1. 수평 헤더 높이 추가
         header = self.process_table.horizontalHeader()
-        if header and not header.isHidden(): # 헤더가 존재하고 숨겨지지 않았으면
+        if header and not header.isHidden():
             table_content_height += header.height()
-            # print(f"계산된 헤더 높이: {header.height()}") # 디버그용
 
         # 2. 모든 행의 높이 합산
         if self.process_table.rowCount() > 0:
             for i in range(self.process_table.rowCount()):
                 table_content_height += self.process_table.rowHeight(i)
-                # print(f"계산된 행 높이 ({i}): {self.process_table.rowHeight(i)}") # 디버그용
-            table_content_height += self.process_table.frameWidth() * 2 # 테이블 테두리 두께 고려
-        else: # 행이 없을 경우, 기본 높이 추정치 사용
-            default_row_height_approx = self.fontMetrics().height() + 12 # 폰트 높이 + 여백
+            table_content_height += self.process_table.frameWidth() * 2  # 테이블 테두리 두께 고려
+        else:
+            # 행이 없을 경우, 기본 높이 추정치 사용
+            default_row_height_approx = self.fontMetrics().height() + 12
             table_content_height += default_row_height_approx
-            table_content_height += self.process_table.frameWidth() * 2 # 테이블 테두리 두께 고려
+            table_content_height += self.process_table.frameWidth() * 2
 
-        self.process_table.setFixedHeight(table_content_height) # 테이블의 고정 높이 설정
-        self.adjustSize() # 창 크기를 내용에 맞게 조절
+        # 테이블의 고정 높이 설정
+        self.process_table.setFixedHeight(table_content_height)
+        
+        # 웹 버튼이 있을 때만 창 너비 조절
+        web_button_count = 0
+        if hasattr(self, 'dynamic_web_buttons_layout') and self.dynamic_web_buttons_layout:
+            for i in range(self.dynamic_web_buttons_layout.count()):
+                item = self.dynamic_web_buttons_layout.itemAt(i)
+                if item and item.widget():
+                    widget = item.widget()
+                    if widget and widget.isVisible():
+                        web_button_count += 1
+        
+        # 창 너비 결정 (고정 너비 + 웹 버튼이 있을 때만 추가)
+        if web_button_count > 0:
+            # 웹 버튼이 있을 때: 기본 너비 + 웹 버튼 영역
+            target_width = 600  # 웹 버튼이 있을 때의 고정 너비
+        else:
+            # 웹 버튼이 없을 때: 기본 너비
+            target_width = 500  # 웹 버튼이 없을 때의 고정 너비
+        
+        # 창 높이 계산
+        # - 상단 버튼 영역 높이: 약 35px
+        # - 테이블 높이 (계산된 값)
+        # - 레이아웃 여백: 약 15px
+        # - 메뉴바, 상태바 높이
+        menu_bar = self.menuBar()
+        status_bar = self.statusBar()
+        menu_height = menu_bar.height() if menu_bar else 0
+        status_height = status_bar.height() if status_bar else 0
+        
+        top_button_height = 35
+        layout_margin = 15
+        
+        total_height = menu_height + top_button_height + table_content_height + status_height + layout_margin
+        
+        # 창 크기 설정 (너비는 고정, 높이만 조절)
+        self.resize(target_width, total_height)
+        
+        # print(f"윈도우 크기 조절됨. 새 크기: {self.width()}x{self.height()}, 테이블 높이: {table_content_height}, 웹 버튼 개수: {web_button_count}")
 
-        # print(f"윈도우 높이 조절됨. 새 높이: {self.height()}, 계산된 테이블 내용 높이: {table_content_height}") # 디버그용
+    def _adjust_window_height_to_table(self):
+        """기존 메서드명 호환성을 위한 별칭"""
+        self._adjust_window_size_to_content()
+
+    def _adjust_window_width_for_web_buttons(self):
+        """웹 바로가기 버튼 추가/삭제 시에만 창 너비를 조절합니다."""
+        # 웹 버튼 개수 확인
+        web_button_count = 0
+        if hasattr(self, 'dynamic_web_buttons_layout') and self.dynamic_web_buttons_layout:
+            for i in range(self.dynamic_web_buttons_layout.count()):
+                item = self.dynamic_web_buttons_layout.itemAt(i)
+                if item and item.widget():
+                    widget = item.widget()
+                    if widget and widget.isVisible():
+                        web_button_count += 1
+        
+        # 창 너비 결정 (최초 창 너비보다 작은 값으로는 축소되지 않음)
+        if web_button_count > 0:
+            target_width = 600  # 웹 버튼이 있을 때의 고정 너비
+        else:
+            target_width = 500  # 웹 버튼이 없을 때의 고정 너비 (최초 창 너비)
+        
+        # 현재 너비가 목표 너비와 다르면 조절
+        current_width = self.width()
+        if current_width != target_width:
+            # 창 최소 너비 제거 후 너비 설정
+            current_min_width = self.minimumWidth()
+            self.setMinimumWidth(0)  # 최소 너비 제거
+            self.resize(target_width, self.height())
+            self.setMinimumWidth(current_min_width)  # 원래 최소 너비 복원
+            # print(f"웹 버튼에 따른 창 너비 조절: {current_width} -> {target_width}")
+
+    def _adjust_window_height_for_table_rows(self):
+        """테이블 행 추가/삭제 시에만 창 높이를 조절합니다."""
+        # 현재 행 수 확인
+        current_row_count = self.process_table.rowCount()
+        
+        print(f"\n=== 창 높이 조절 디버깅 ===")
+        print(f"현재 행 수: {current_row_count}")
+        
+        # 행이 없으면 기본 높이 사용
+        if current_row_count == 0:
+            # 기본 높이 계산 (헤더 + 1행 + 여백)
+            header = self.process_table.horizontalHeader()
+            header_height = header.height() if header and not header.isHidden() else 0
+            default_row_height = self.fontMetrics().height() + 12
+            table_height = header_height + default_row_height + self.process_table.frameWidth() * 2
+            print(f"행이 없음 - 헤더 높이: {header_height}, 기본 행 높이: {default_row_height}, 테이블 높이: {table_height}")
+        else:
+            # 실제 행 높이 계산
+            table_height = 0
+            header = self.process_table.horizontalHeader()
+            if header and not header.isHidden():
+                table_height += header.height()
+                print(f"헤더 높이: {header.height()}")
+            
+            print(f"각 행 높이: ", end="")
+            for i in range(current_row_count):
+                row_height = self.process_table.rowHeight(i)
+                table_height += row_height
+                print(f"{row_height}px ", end="")
+            print()
+            
+            frame_width = self.process_table.frameWidth() * 2
+            table_height += frame_width
+            print(f"테두리 두께: {frame_width}px")
+            print(f"총 테이블 높이: {table_height}px")
+        
+        # 테이블 높이 설정
+        self.process_table.setFixedHeight(table_height)
+        print(f"테이블 고정 높이 설정: {table_height}px")
+        
+        # 창 높이 계산
+        menu_bar = self.menuBar()
+        status_bar = self.statusBar()
+        menu_height = menu_bar.height() if menu_bar else 0
+        status_height = status_bar.height() if status_bar else 0
+        
+        top_button_height = 35
+        layout_margin = 15
+        
+        total_height = menu_height + top_button_height + table_height + status_height + layout_margin
+        
+        print(f"창 높이 구성: 메뉴({menu_height}) + 상단버튼({top_button_height}) + 테이블({table_height}) + 상태바({status_height}) + 여백({layout_margin}) = {total_height}px")
+        
+        # 레이아웃 구조 분석
+        print(f"\n=== 레이아웃 구조 분석 ===")
+        central_widget = self.centralWidget()
+        print(f"중앙 위젯: {central_widget}")
+        if central_widget:
+            print(f"중앙 위젯 크기 정책: {central_widget.sizePolicy()}")
+            print(f"중앙 위젯 최소 크기: {central_widget.minimumSize()}")
+            print(f"중앙 위젯 최대 크기: {central_widget.maximumSize()}")
+            
+            main_layout = central_widget.layout()
+            print(f"메인 레이아웃: {main_layout}")
+            if main_layout:
+                print(f"메인 레이아웃 여백: {main_layout.contentsMargins()}")
+                print(f"메인 레이아웃 간격: {main_layout.spacing()}")
+        
+        print(f"테이블 크기 정책: {self.process_table.sizePolicy()}")
+        print(f"테이블 최소 크기: {self.process_table.minimumSize()}")
+        print(f"테이블 최대 크기: {self.process_table.maximumSize()}")
+        print(f"테이블 sizeHint: {self.process_table.sizeHint()}")
+        print(f"테이블 minimumSizeHint: {self.process_table.minimumSizeHint()}")
+        
+        print(f"창 최소 크기: {self.minimumSize()}")
+        print(f"창 최대 크기: {self.maximumSize()}")
+        print(f"창 sizeHint: {self.sizeHint()}")
+        print("=== 레이아웃 분석 완료 ===\n")
+        
+        # 현재 창 크기와 비교
+        current_height = self.height()
+        print(f"현재 창 높이: {current_height}px -> 목표 높이: {total_height}px")
+        
+        # 창 최소 높이 제거 후 높이 설정
+        current_min_height = self.minimumHeight()
+        self.setMinimumHeight(0)  # 최소 높이 제거
+        self.resize(self.width(), total_height)
+        self.setMinimumHeight(current_min_height)  # 원래 최소 높이 복원
+        
+        # 설정 후 확인
+        new_height = self.height()
+        print(f"설정 후 창 높이: {new_height}px")
+        print(f"테이블 실제 높이: {self.process_table.height()}px")
+        print("=== 디버깅 완료 ===\n")
+
+    def _apply_window_resize_lock(self):
+        """창 크기 조절 잠금 설정을 적용합니다."""
+        lock_enabled = self.data_manager.global_settings.lock_window_resize
+        
+        if lock_enabled:
+            # 창 크기 조절을 고정 (사용자가 드래그로 크기 조절 불가)
+            # 자동 크기 조절은 허용하기 위해 최소/최대 크기를 현재 크기로 설정
+            current_size = self.size()
+            self.setMinimumSize(current_size)
+            self.setMaximumSize(current_size)
+            print("창 크기 조절 잠금 활성화됨")
+        else:
+            # 창 크기 조절 허용 (기본 동작)
+            self.setMinimumSize(500, 0)  # 원래 최소 너비만 유지
+            self.setMaximumSize(16777215, 16777215)  # 최대 크기 해제
+            print("창 크기 조절 잠금 비활성화됨")
+
+    def _update_window_resize_lock(self):
+        """전역 설정 변경 시 창 크기 조절 잠금을 업데이트합니다."""
+        self._apply_window_resize_lock()
 
 # --- 애플리케이션 실행 로직 ---
 def start_main_application(instance_manager: SingleInstanceApplication):
