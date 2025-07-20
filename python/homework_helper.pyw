@@ -30,6 +30,12 @@ from launcher import Launcher
 from notifier import Notifier
 from scheduler import Scheduler, PROC_STATE_INCOMPLETE, PROC_STATE_COMPLETED, PROC_STATE_RUNNING
 
+def resource_path_for_qt_icon(relative_path):
+    """QIcon에서 사용할 때만, 실행 파일 기준 상대 경로 반환"""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return relative_path
+
 class MainWindow(QMainWindow):
     INSTANCE = None # 다른 모듈에서 메인 윈도우 인스턴스에 접근하기 위함
     request_table_refresh_signal = pyqtSignal() # 테이블 새로고침 요청 시그널
@@ -181,14 +187,16 @@ class MainWindow(QMainWindow):
     def _set_window_icon(self):
         """창 아이콘을 설정합니다."""
         # .ico 파일 먼저 확인
-        icon_path_ico = resource_path(os.path.join('img', 'app_icon.ico'))
-        
-        if os.path.exists(icon_path_ico):
-            self.setWindowIcon(QIcon(icon_path_ico))
+        icon_path_ico = resource_path_for_qt_icon(os.path.join('img', 'app_icon.ico'))
+        print("아이콘 경로:", icon_path_ico)
+        print("존재 여부:", os.path.exists(icon_path_ico))
+        icon = QIcon(icon_path_ico)
+        print("QIcon isNull:", icon.isNull())
+        if os.path.exists(icon_path_ico) and not icon.isNull():
+            self.setWindowIcon(icon)
         else:
-            style = self.style()
-            if style:
-                self.setWindowIcon(style.standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
+            style = QApplication.style()
+            self.setWindowIcon(style.standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
 
     def _configure_table_header(self):
         """테이블 헤더의 크기 조절 모드 및 컬럼 너비를 설정합니다."""
