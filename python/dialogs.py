@@ -15,6 +15,7 @@ from PyQt6.QtGui import QIcon # QIcon might be needed if dialogs use icons direc
 # If data_models.py or process_utils.py are in a subdirectory, adjust the import path.
 from data_models import ManagedProcess, GlobalSettings
 from process_utils import get_all_running_processes_info # Used by RunningProcessSelectionDialog
+from utils import copy_shortcut_file # 바로가기 파일 복사 기능
 
 class NumericTableWidgetItem(QTableWidgetItem):
     """ QTableWidgetItem that allows numeric sorting. """
@@ -45,12 +46,13 @@ class RunningProcessSelectionDialog(QDialog):
         self.process_list_widget.setSortingEnabled(True)
 
         header = self.process_list_widget.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) # Icon
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) # PID
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)      # Name
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)          # Path
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents) # Memory
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents) # CPU
+        if header:  # None 체크 추가
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) # Icon
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) # PID
+            header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)      # Name
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)          # Path
+            header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents) # Memory
+            header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents) # CPU
 
         self.process_list_widget.setColumnWidth(0, 32) # Icon column width
         self.process_list_widget.setColumnWidth(2, 200) # Name column initial width
@@ -104,12 +106,14 @@ class RunningProcessSelectionDialog(QDialog):
 
     def accept(self):
         """ Overrides QDialog.accept() to store selected process info. """
-        selected_rows = self.process_list_widget.selectionModel().selectedRows()
-        if selected_rows:
-            selected_row_index = selected_rows[0].row()
-            item_with_data = self.process_list_widget.item(selected_row_index, 2) # Name item
-            if item_with_data:
-                self.selected_process_info = item_with_data.data(Qt.ItemDataRole.UserRole)
+        selection_model = self.process_list_widget.selectionModel()
+        if selection_model:  # None 체크 추가
+            selected_rows = selection_model.selectedRows()
+            if selected_rows:
+                selected_row_index = selected_rows[0].row()
+                item_with_data = self.process_list_widget.item(selected_row_index, 2) # Name item
+                if item_with_data:
+                    self.selected_process_info = item_with_data.data(Qt.ItemDataRole.UserRole)
         super().accept()
 
     def get_selected_process_info(self) -> Optional[Dict[str, Any]]:
@@ -128,7 +132,7 @@ class ProcessDialog(QDialog):
             self.setWindowTitle("새 프로세스 추가")
 
         self.setMinimumWidth(450)
-        self.layout = QFormLayout(self)
+        self.form_layout = QFormLayout(self)  # 변수명 변경
 
         self.select_running_button = QPushButton("실행 중인 프로세스에서 자동 완성...")
         self.name_edit = QLineEdit()
@@ -141,26 +145,26 @@ class ProcessDialog(QDialog):
         self.mandatory_times_edit = QLineEdit()
         self.is_mandatory_time_enabled_checkbox = QCheckBox("특정 접속 시간 알림 활성화")
 
-        self.layout.addRow(self.select_running_button)
-        self.layout.addRow("이름 (비워두면 자동 생성):", self.name_edit)
+        self.form_layout.addRow(self.select_running_button)
+        self.form_layout.addRow("이름 (비워두면 자동 생성):", self.name_edit)
 
         monitor_path_layout = QHBoxLayout()
         monitor_path_layout.addWidget(self.monitoring_path_edit)
         monitor_path_layout.addWidget(self.monitoring_path_button)
-        self.layout.addRow("모니터링 경로 (필수):", monitor_path_layout)
+        self.form_layout.addRow("모니터링 경로 (필수):", monitor_path_layout)
 
         launch_path_layout = QHBoxLayout()
         launch_path_layout.addWidget(self.launch_path_edit)
         launch_path_layout.addWidget(self.launch_path_button)
-        self.layout.addRow("실행 경로 (비워두면 모니터링 경로 사용):", launch_path_layout)
+        self.form_layout.addRow("실행 경로 (비워두면 모니터링 경로 사용):", launch_path_layout)
 
-        self.layout.addRow("서버 초기화 시각 (HH:MM):", self.server_reset_time_edit)
-        self.layout.addRow("사용자 실행 주기 (시간):", self.user_cycle_hours_edit)
-        self.layout.addRow("특정 접속 시각 (HH:MM, 쉼표로 구분):", self.mandatory_times_edit)
-        self.layout.addRow(self.is_mandatory_time_enabled_checkbox)
+        self.form_layout.addRow("서버 초기화 시각 (HH:MM):", self.server_reset_time_edit)
+        self.form_layout.addRow("사용자 실행 주기 (시간):", self.user_cycle_hours_edit)
+        self.form_layout.addRow("특정 접속 시각 (HH:MM, 쉼표로 구분):", self.mandatory_times_edit)
+        self.form_layout.addRow(self.is_mandatory_time_enabled_checkbox)
 
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        self.layout.addRow(self.button_box)
+        self.form_layout.addRow(self.button_box)
 
         self.select_running_button.clicked.connect(self.open_running_process_selector)
         self.monitoring_path_button.clicked.connect(
@@ -224,8 +228,29 @@ class ProcessDialog(QDialog):
             filter_string
         )
         if file_path:
-            # 사용자가 선택한 파일의 경로를 그대로 입력 필드에 설정합니다.
-            path_edit_widget.setText(file_path)
+            # 바로가기 파일인 경우 자동으로 복사
+            file_ext = os.path.splitext(file_path)[1].lower()
+            if file_ext in ['.lnk', '.url']:
+                copied_path = copy_shortcut_file(file_path)
+                if copied_path:
+                    # 복사된 파일 경로를 입력 필드에 설정
+                    path_edit_widget.setText(copied_path)
+                    QMessageBox.information(
+                        self, 
+                        "바로가기 파일 복사 완료", 
+                        f"바로가기 파일이 자동으로 복사되었습니다.\n원본: {os.path.basename(file_path)}\n복사본: {os.path.basename(copied_path)}"
+                    )
+                else:
+                    # 복사 실패 시 원본 경로 사용
+                    path_edit_widget.setText(file_path)
+                    QMessageBox.warning(
+                        self, 
+                        "바로가기 파일 복사 실패", 
+                        f"바로가기 파일 복사에 실패했습니다. 원본 경로를 사용합니다.\n{file_path}"
+                    )
+            else:
+                # 일반 실행 파일인 경우 원본 경로 그대로 사용
+                path_edit_widget.setText(file_path)
 
     def validate_time_format(self, time_str: str) -> bool:
         if not time_str:
@@ -306,7 +331,7 @@ class GlobalSettingsDialog(QDialog):
         self.current_settings = current_settings
         self.setMinimumWidth(400)
 
-        self.layout = QFormLayout(self)
+        self.form_layout = QFormLayout(self)  # 변수명 변경
 
         self.sleep_start_edit = QTimeEdit()
         self.sleep_start_edit.setDisplayFormat("HH:mm")
@@ -323,15 +348,15 @@ class GlobalSettingsDialog(QDialog):
         self.run_on_startup_checkbox = QCheckBox("Windows 시작 시 자동 실행")
         self.lock_window_resize_checkbox = QCheckBox("창 크기 조절 잠금")
 
-        self.layout.addRow("수면 시작 시각:", self.sleep_start_edit)
-        self.layout.addRow("수면 종료 시각:", self.sleep_end_edit)
-        self.layout.addRow("수면 보정 알림 (수면 시작 기준):", self.sleep_correction_hours_spinbox)
-        self.layout.addRow("일반 주기 만료 알림 (마감 기준):", self.cycle_advance_hours_spinbox)
-        self.layout.addRow(self.run_on_startup_checkbox)
-        self.layout.addRow(self.lock_window_resize_checkbox)
+        self.form_layout.addRow("수면 시작 시각:", self.sleep_start_edit)
+        self.form_layout.addRow("수면 종료 시각:", self.sleep_end_edit)
+        self.form_layout.addRow("수면 보정 알림 (수면 시작 기준):", self.sleep_correction_hours_spinbox)
+        self.form_layout.addRow("일반 주기 만료 알림 (마감 기준):", self.cycle_advance_hours_spinbox)
+        self.form_layout.addRow(self.run_on_startup_checkbox)
+        self.form_layout.addRow(self.lock_window_resize_checkbox)
 
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        self.layout.addRow(self.button_box)
+        self.form_layout.addRow(self.button_box)
 
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
@@ -365,7 +390,7 @@ class WebShortcutDialog(QDialog):
         self.setWindowTitle("웹 바로 가기 편집" if self.is_edit_mode else "새 웹 바로 가기 추가")
         self.setMinimumWidth(350)
 
-        self.layout = QFormLayout(self)
+        self.form_layout = QFormLayout(self)  # 변수명 변경
 
         self.name_edit = QLineEdit()
         self.url_edit = QLineEdit()
@@ -379,12 +404,12 @@ class WebShortcutDialog(QDialog):
         # self.refresh_time_edit.setDisplayFormat("HH:mm")
         # self.refresh_time_edit.setSpecialValueText("미설정") # QTimeEdit은 None 표현이 어려울 수 있음
 
-        self.layout.addRow("버튼 이름 (필수):", self.name_edit)
-        self.layout.addRow("웹 URL (필수):", self.url_edit)
-        self.layout.addRow("매일 초기화 시각 (선택):", self.refresh_time_edit) # 레이블 변경
+        self.form_layout.addRow("버튼 이름 (필수):", self.name_edit)
+        self.form_layout.addRow("웹 URL (필수):", self.url_edit)
+        self.form_layout.addRow("매일 초기화 시각 (선택):", self.refresh_time_edit) # 레이블 변경
 
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        self.layout.addRow(self.button_box)
+        self.form_layout.addRow(self.button_box)
 
         self.button_box.accepted.connect(self.validate_and_accept)
         self.button_box.rejected.connect(self.reject)

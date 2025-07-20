@@ -165,7 +165,8 @@ class Scheduler:
                                 title=f"{process.name} - 접속 시간!",
                                 message=f"지금은 '{process.name}'의 고정 접속 시간({mandatory_time_str})입니다.",
                                 task_id_to_highlight=process.id,
-                                button_text="확인"
+                                button_text="실행",
+                                button_action="run"
                             )
                             self.already_notified_mandatory_today.add(notification_key)
 
@@ -206,7 +207,8 @@ class Scheduler:
                             title=f"{process.name} - 접속 권장",
                             message=f"'{process.name}' 접속 주기가 약 {remaining_str} 후 만료됩니다. (마감: {deadline_dt.strftime('%H:%M')})",
                             task_id_to_highlight=process.id,
-                            button_text="확인"
+                            button_text="실행",
+                            button_action="run"
                         )
                         self.notified_cycle_deadlines[process.id] = current_deadline_ts
                 elif now_dt >= deadline_dt:
@@ -241,7 +243,8 @@ class Scheduler:
                             title=f"{process.name} - 미리 접속 권장!",
                             message=f"'{process.name}'의 다음 주기 마감({original_deadline_dt.strftime('%H:%M')})이 수면 시간({gs.sleep_start_time_str}~{gs.sleep_end_time_str}) 중입니다. 잠들기 전에 미리 접속하는 것이 좋습니다.",
                             task_id_to_highlight=process.id,
-                            button_text="확인"
+                            button_text="실행",
+                            button_action="run"
                         )
                         self.notified_sleep_corrected_tasks[notification_key] = True
                         # Also mark this as notified for regular cycle to avoid double notification
@@ -296,7 +299,8 @@ class Scheduler:
                     title=f"{process.name} - 일일 과제!",
                     message=f"'{process.name}'의 오늘 서버 과제 마감({current_server_day_end_dt.strftime('%H:%M:%S')})이 다가옵니다. (오늘 플레이 기록 없음)",
                     task_id_to_highlight=process.id,
-                    button_text="확인"
+                    button_text="실행",
+                    button_action="run"
                 )
                 self.notified_daily_reset_tasks.add(notification_key)
 

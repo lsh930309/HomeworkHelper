@@ -5,7 +5,7 @@ import urllib.parse
 
 class Notifier:
     def __init__(self, application_name: str = "게임 매니저", 
-                 main_window_activated_callback: Optional[Callable[[Optional[str]], None]] = None):
+                 main_window_activated_callback: Optional[Callable[[Optional[str], Optional[str]], None]] = None):
         self.application_name = application_name
         self.main_window_activated_callback = main_window_activated_callback # MainWindow의 메소드를 저장
         try:
@@ -28,24 +28,23 @@ class Notifier:
     def send_notification(self,
                           title: str,
                           message: str,
-                          # on_click_callback 파라미터는 이제 __init__에서 받은 것을 사용하므로 제거
                           task_id_to_highlight: Optional[str] = None,
-                          button_text: Optional[str] = "자세히 보기"):
-        
+                          button_text: Optional[str] = None,
+                          button_action: Optional[str] = None):
+        # button_action: 버튼 클릭 시 전달할 source 값 (예: 'run')
         if not self.toaster:
             print("Notifier가 올바르게 초기화되지 않았습니다. (콘솔 대체 알림)")
             print(f"[알림-대체] 제목: {self.application_name}: {title}")
             print(f"[알림-대체] 내용: {message}")
-            if self.main_window_activated_callback and task_id_to_highlight: # 대체 콜백 시도
+            if self.main_window_activated_callback and task_id_to_highlight:
                 print(f"[알림-대체] 클릭 시 전달될 작업 ID (시뮬레이션): {task_id_to_highlight}")
-                # self.main_window_activated_callback(task_id_to_highlight) # 직접 호출은 GUI 스레드 문제 유발 가능
             return
 
         print(f"알림 요청 (windows-toasts): '{title}' - '{message}'")
         new_toast = Toast()
         new_toast.text_fields = [title, message]
 
-        if self.main_window_activated_callback: # MainWindow로부터 콜백이 전달된 경우에만 설정
+        if self.main_window_activated_callback:
             base_args_dict = {}
             if task_id_to_highlight: base_args_dict['task_id'] = task_id_to_highlight
             else: base_args_dict['task_id'] = 'NONE'
@@ -55,18 +54,18 @@ class Notifier:
                 print(f"Toast activated. Received arguments string: '{received_arg_string}'")
                 parsed_args = self._parse_arguments_string(received_arg_string)
                 final_task_id = parsed_args.get('task_id')
+                source = parsed_args.get('source')
                 if final_task_id == 'NONE': final_task_id = None
-                
-                if self.main_window_activated_callback: # 다시 한번 확인
-                    self.main_window_activated_callback(final_task_id) # MainWindow의 메소드 호출
+                if self.main_window_activated_callback:
+                    self.main_window_activated_callback(final_task_id, source)
 
             new_toast.on_activated = internal_activated_handler
             new_toast.launch_args = urllib.parse.urlencode({**base_args_dict, 'source': 'body'})
             if button_text:
-                button_args_str = urllib.parse.urlencode({**base_args_dict, 'source': 'button_1'})
+                # 버튼 클릭 시 source를 button_action으로 지정
+                button_args_str = urllib.parse.urlencode({**base_args_dict, 'source': button_action or 'run'})
                 button = ToastButton(content=button_text, arguments=button_args_str)
                 new_toast.AddAction(button)
-        
         try:
             self.toaster.show_toast(new_toast)
             print(f"알림 표시됨 (windows-toasts): '{title}' (클릭 콜백 {'설정됨' if self.main_window_activated_callback else '없음'})")

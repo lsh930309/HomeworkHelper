@@ -13,7 +13,8 @@ class ManagedProcess:
                  user_cycle_hours: Optional[int] = 24, # 기본값 24시간
                  mandatory_times_str: Optional[List[str]] = None,
                  is_mandatory_time_enabled: bool = False,
-                 last_played_timestamp: Optional[float] = None): # Unix timestamp
+                 last_played_timestamp: Optional[float] = None, # Unix timestamp
+                 original_launch_path: Optional[str] = None): # 원본 실행 경로 보존
         
         self.id = id if id else str(uuid.uuid4()) # ID가 없으면 새로 생성
         self.name = name
@@ -26,6 +27,7 @@ class ManagedProcess:
         self.is_mandatory_time_enabled = is_mandatory_time_enabled
         
         self.last_played_timestamp = last_played_timestamp
+        self.original_launch_path = original_launch_path if original_launch_path else launch_path
 
     def __repr__(self):
         return f"<ManagedProcess(id='{self.id}', name='{self.name}')>"
@@ -37,6 +39,9 @@ class ManagedProcess:
     @classmethod
     def from_dict(cls, data: Dict) -> 'ManagedProcess':
         """딕셔너리에서 객체를 생성합니다 (JSON 로드 시 사용)."""
+        # 이전 버전과의 호환성을 위해 original_launch_path가 없을 경우 launch_path로 설정
+        if 'original_launch_path' not in data and 'launch_path' in data:
+            data['original_launch_path'] = data['launch_path']
         return cls(**data)
 
 class GlobalSettings:

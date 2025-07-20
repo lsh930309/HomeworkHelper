@@ -3,15 +3,24 @@ import json
 import os
 from typing import List, Optional, Dict
 from data_models import ManagedProcess, GlobalSettings, WebShortcut # 바로 위 파일에서 정의한 클래스 임포트
+from utils import copy_shortcut_file, get_shortcuts_directory # 바로가기 복사 기능
 
 class DataManager:
     """
     ManagedProcess 객체들과 GlobalSettings 객체를 JSON 파일에서 로드하고 저장합니다.
     """
-    def __init__(self, data_folder: str = "app_data"):
-        self.data_folder = data_folder
+    def __init__(self, data_folder: str = "homework_helper_data"):
+        # 현재 스크립트 위치에서 homework_helper_data 경로 계산
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.data_folder = os.path.join(current_dir, data_folder)
+        
         if not os.path.exists(self.data_folder):
             os.makedirs(self.data_folder) # 데이터 저장 폴더 생성
+        
+        # shortcuts 디렉토리도 함께 생성
+        shortcuts_dir = os.path.join(self.data_folder, "shortcuts")
+        if not os.path.exists(shortcuts_dir):
+            os.makedirs(shortcuts_dir)
 
         self.settings_file_path = os.path.join(self.data_folder, "global_settings.json")
         self.processes_file_path = os.path.join(self.data_folder, "managed_processes.json")
@@ -20,6 +29,10 @@ class DataManager:
         self.global_settings: GlobalSettings = self._load_global_settings()
         self.managed_processes: List[ManagedProcess] = self._load_managed_processes()
         self.web_shortcuts: List[WebShortcut] = self._load_web_shortcuts()
+        
+        # 기존 데이터 모델 마이그레이션 및 바로가기 파일 복사
+        self._migrate_existing_data()
+        self._ensure_existing_shortcuts()
 
     def _load_global_settings(self) -> GlobalSettings:
         """파일에서 전역 설정을 로드합니다. 파일이 없으면 기본값으로 객체를 생성합니다."""
@@ -191,3 +204,113 @@ class DataManager:
             return True
         print(f"오류: 삭제할 웹 바로 가기 ID '{shortcut_id}'을(를) 찾을 수 없습니다.")
         return False
+
+    def _migrate_existing_data(self):
+        """기존 데이터를 새로운 모델 형식으로 마이그레이션합니다."""
+        print("\n=== 기존 데이터 모델 마이그레이션 시작 ===")
+        
+        has_changes = False
+        for i, process in enumerate(self.managed_processes):
+            print(f"\n--- 프로세스 {i+1}: {process.name} ---")
+            
+            # original_launch_path 필드가 없으면 추가
+            if not hasattr(process, 'original_launch_path') or process.original_launch_path is None:
+                process.original_launch_path = process.launch_path
+                has_changes = True
+                print(f"✅ original_launch_path 필드 추가: {process.original_launch_path}")
+            else:
+                print(f"original_launch_path 필드 이미 존재: {process.original_launch_path}")
+        
+        if has_changes:
+            print("\n마이그레이션 완료 - 변경사항을 저장합니다.")
+            self.save_managed_processes()
+        else:
+            print("\n마이그레이션 불필요 - 모든 데이터가 최신 형식입니다.")
+        
+        print("=== 기존 데이터 모델 마이그레이션 완료 ===\n")
+
+    def _ensure_existing_shortcuts(self):
+        """기존 프로그램들의 바로가기 파일이 shortcuts 폴더에 있는지 확인하고, 없으면 복사합니다."""
+        print("=== 기존 바로가기 파일 확인 시작 ===")
+        shortcuts_dir = get_shortcuts_directory()
+        print(f"shortcuts 디렉토리 경로: {shortcuts_dir}")
+        
+        # shortcuts 디렉토리가 없으면 생성
+        if not os.path.exists(shortcuts_dir):
+            os.makedirs(shortcuts_dir, exist_ok=True)
+            print(f"shortcuts 디렉토리 생성됨: {shortcuts_dir}")
+        
+        # shortcuts 폴더에 있는 파일 목록
+        existing_shortcuts = set()
+        try:
+            for filename in os.listdir(shortcuts_dir):
+                existing_shortcuts.add(filename.lower())
+            print(f"기존 shortcuts 파일들: {list(existing_shortcuts)}")
+        except Exception as e:
+            print(f"shortcuts 디렉토리 읽기 실패: {e}")
+            return
+        
+        print(f"등록된 프로세스 수: {len(self.managed_processes)}")
+        
+        # 각 프로세스의 실행 경로 확인
+        has_changes = False
+        for i, process in enumerate(self.managed_processes):
+            print(f"\n--- 프로세스 {i+1}: {process.name} ---")
+            launch_path = process.launch_path
+            original_path = getattr(process, 'original_launch_path', launch_path)
+            print(f"현재 실행 경로: {launch_path}")
+            print(f"원본 실행 경로: {original_path}")
+            
+            if not launch_path:
+                print("실행 경로가 비어있음")
+                continue
+            
+            # 원본 경로가 존재하지 않으면 경고
+            if original_path and not os.path.exists(original_path):
+                print(f"⚠️ 원본 파일이 존재하지 않음: {original_path}")
+                # 원본 경로 정보는 유지하되, 현재 실행 경로가 유효한지 확인
+                if not os.path.exists(launch_path):
+                    print(f"❌ 현재 실행 경로도 존재하지 않음: {launch_path}")
+                    print(f"프로세스 '{process.name}'의 실행 경로가 유효하지 않습니다.")
+                    continue
+            
+            # 바로가기 파일인지 확인 (원본 경로 기준)
+            file_ext = os.path.splitext(original_path)[1].lower()
+            print(f"원본 파일 확장자: {file_ext}")
+            
+            if file_ext not in ['.lnk', '.url']:
+                print("바로가기 파일이 아님 (건너뜀)")
+                continue
+            
+            # 이미 shortcuts 폴더에 있는지 확인 (현재 경로 기준)
+            current_filename = os.path.basename(launch_path)
+            original_filename = os.path.basename(original_path)
+            print(f"현재 파일명: {current_filename}")
+            print(f"원본 파일명: {original_filename}")
+            
+            # 현재 경로가 이미 shortcuts 폴더에 있으면 건너뜀
+            if current_filename.lower() in existing_shortcuts:
+                print(f"바로가기 파일이 이미 shortcuts 폴더에 존재합니다: {current_filename}")
+                continue
+            
+            # 원본 파일을 shortcuts 폴더에 복사
+            print(f"원본 바로가기 파일을 복사합니다: {original_filename}")
+            copied_path = copy_shortcut_file(original_path)
+            if copied_path:
+                # 프로세스의 실행 경로를 복사된 경로로 업데이트 (원본 경로는 보존)
+                process.launch_path = copied_path
+                if not hasattr(process, 'original_launch_path'):
+                    process.original_launch_path = original_path
+                has_changes = True
+                print(f"✅ 프로세스 실행 경로 업데이트: {process.name} -> {copied_path}")
+            else:
+                print(f"❌ 바로가기 파일 복사 실패: {original_path}")
+        
+        # 변경사항이 있으면 저장
+        if has_changes:
+            self.save_managed_processes()
+            print("기존 프로그램들의 바로가기 파일 복사 및 경로 업데이트 완료")
+        else:
+            print("변경사항 없음")
+        
+        print("=== 기존 바로가기 파일 확인 완료 ===")
