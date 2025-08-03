@@ -1,6 +1,6 @@
 # 숙제 관리자 (Homework Helper)
 
-[![Python](httpshttps://img.shields.io/badge/Python-3.11%2B-blue?logo=python)](https://www.python.org)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![GUI](https://img.shields.io/badge/GUI-PyQt6-orange)](https://riverbankcomputing.com/software/pyqt/)
 
