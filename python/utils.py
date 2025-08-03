@@ -18,6 +18,20 @@ def resource_path(relative_path):
     """ 개발 환경 및 PyInstaller 환경 모두에서 리소스 파일의 절대 경로를 반환합니다. """
     return os.path.join(get_base_path(), relative_path)
 
+def get_bundle_resource_path(relative_path: str) -> str:
+    """
+    PyInstaller 번들 내부의 리소스(이미지, 아이콘 등) 절대 경로를 반환합니다.
+    """
+    try:
+        # PyInstaller로 패키징된 경우, _MEIPASS 임시 폴더를 기준으로 경로 설정
+        base_path = sys._MEIPASS
+    except AttributeError:
+        # 개발 환경인 경우, 프로젝트 루트(X)를 기준으로 경로 설정
+        # (이 파일의 위치가 X/python/utils.py라고 가정)
+        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        
+    return os.path.join(base_path, relative_path)
+
 def get_shortcuts_directory() -> str:
     """homework_helper_data/shortcuts 디렉토리 경로를 반환합니다."""
     # 실행 파일 기준 homework_helper_data/shortcuts 경로 계산

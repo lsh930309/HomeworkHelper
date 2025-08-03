@@ -19,7 +19,7 @@ from dialogs import ProcessDialog, GlobalSettingsDialog, NumericTableWidgetItem,
 from tray_manager import TrayManager
 from gui_notification_handler import GuiNotificationHandler
 from instance_manager import run_with_single_instance_check, SingleInstanceApplication
-from utils import resource_path
+from utils import get_bundle_resource_path
 
 # --- 기타 로컬 유틸리티/데이터 모듈 임포트 ---
 from data_manager import DataManager
@@ -29,12 +29,6 @@ from windows_utils import set_startup_shortcut, get_startup_shortcut_status
 from launcher import Launcher
 from notifier import Notifier
 from scheduler import Scheduler, PROC_STATE_INCOMPLETE, PROC_STATE_COMPLETED, PROC_STATE_RUNNING
-
-def resource_path_for_qt_icon(relative_path):
-    """QIcon에서 사용할 때만, 실행 파일 기준 상대 경로 반환"""
-    if hasattr(sys, '_MEIPASS'):
-        return os.path.join(sys._MEIPASS, relative_path)
-    return relative_path
 
 class MainWindow(QMainWindow):
     INSTANCE = None # 다른 모듈에서 메인 윈도우 인스턴스에 접근하기 위함
@@ -187,7 +181,7 @@ class MainWindow(QMainWindow):
     def _set_window_icon(self):
         """창 아이콘을 설정합니다."""
         # .ico 파일 먼저 확인
-        icon_path_ico = resource_path_for_qt_icon(os.path.join('img', 'app_icon.ico'))
+        icon_path_ico = get_bundle_resource_path(r"img\app_icon.ico")
         print("아이콘 경로:", icon_path_ico)
         print("존재 여부:", os.path.exists(icon_path_ico))
         icon = QIcon(icon_path_ico)
