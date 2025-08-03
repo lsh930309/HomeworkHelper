@@ -79,6 +79,8 @@ class MainWindow(QMainWindow):
         self._create_menu_bar() # 메뉴 바 생성
         self._add_always_on_top_checkbox() # 항상 위 체크박스 추가
 
+        self._is_game_mode_active = False # 게임 모드 활성화 여부 추적
+
         # --- UI 구성 ---
         central_widget = QWidget(self) # 중앙 위젯 생성
         self.setCentralWidget(central_widget) # 중앙 위젯 설정
