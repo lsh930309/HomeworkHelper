@@ -106,6 +106,21 @@ class MainWindow(QMainWindow):
 
         self.add_web_shortcut_button.clicked.connect(self._open_add_web_shortcut_dialog) # 버튼 클릭 시그널 연결
         self.top_button_area_layout.addWidget(self.add_web_shortcut_button) # 상단 버튼 영역에 웹 바로가기 추가 버튼 추가
+
+        # GitHub 바로가기 버튼 추가
+        self.github_button = QPushButton()
+        self.github_button.setToolTip("GitHub 저장소 방문")
+        # 아이콘 설정 (표준 아이콘 또는 테마 아이콘 사용)
+        github_icon = QIcon.fromTheme("github", self.style().standardIcon(QStyle.StandardPixmap.SP_CommandLink))
+        if not github_icon.isNull():
+            self.github_button.setIcon(github_icon)
+        else:
+            self.github_button.setText("GH") # 아이콘 없을 시 대체 텍스트
+        # 크기를 다른 아이콘 버튼과 맞춤
+        self.github_button.setFixedSize(icon_button_size, icon_button_size)
+        self.github_button.clicked.connect(lambda: self.open_webpage("https://github.com/lsh930309/HomeworkHelper"))
+        self.top_button_area_layout.addWidget(self.github_button)
+
         main_layout.addLayout(self.top_button_area_layout) # 메인 레이아웃에 상단 버튼 영역 추가
 
         # 프로세스 테이블 설정
@@ -342,13 +357,44 @@ class MainWindow(QMainWindow):
                 status_bar.showMessage("프로세스 상태 변경 감지됨.", 2000)
             self.update_process_statuses_only() # 상태 컬럼만 업데이트
 
+        # 게임 모드 (실행 중인 게임이 있는지) 확인 및 창 상태 변경
+        self._check_and_toggle_game_mode()
+
+    def _check_and_toggle_game_mode(self):
+        """실행 중인 게임이 있는지 확인하고, 그에 따라 창을 숨기거나 표시합니다."""
+        # 현재 모니터링 중인 프로세스 중 '실행중' 상태인 것이 있는지 확인
+        any_game_running = False
+        for p in self.data_manager.managed_processes:
+            if self.scheduler.determine_process_visual_status(p, datetime.datetime.now(), self.data_manager.global_settings) == PROC_STATE_RUNNING:
+                any_game_running = True
+                break
+
+        if any_game_running and not self._is_game_mode_active:
+            # 게임이 실행되었고, 아직 게임 모드가 활성화되지 않았다면
+            self._is_game_mode_active = True
+            print("게임 실행 감지: 창을 트레이로 숨깁니다.")
+            self.tray_manager.handle_minimize_event() # 창을 트레이로 숨김
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage("게임 실행 중: 창이 트레이로 숨겨졌습니다.", 3000)
+        elif not any_game_running and self._is_game_mode_active:
+            # 모든 게임이 종료되었고, 게임 모드가 활성화되어 있었다면
+            self._is_game_mode_active = False
+            print("모든 게임 종료 감지: 창을 다시 표시합니다.")
+            self.activate_and_show() # 창을 다시 표시
+            status_bar = self.statusBar()
+            if status_bar:
+                status_bar.showMessage("모든 게임 종료: 창이 다시 표시되었습니다.", 3000)
+
     def run_scheduler_check(self):
         """스케줄러 검사를 실행하고 상태 변경이 있을 때만 테이블을 업데이트합니다."""
         # 스케줄러 검사 실행 (알림 발송 등)
-        self.scheduler.run_all_checks() # 게임 관련 스케줄 검사
+        status_changed = self.scheduler.run_all_checks() # 게임 관련 스케줄 검사
         
-        # 상태 변경이 있을 때만 업데이트 (불필요한 UI 업데이트 방지)
-        # 스케줄러는 주로 알림 발송을 담당하므로, UI 업데이트는 프로세스 모니터에서 처리
+        if status_changed:
+            print("스케줄러에 의해 상태 변경 감지됨. 테이블 UI 업데이트.")
+            self.update_process_statuses_only()
+        
         # 웹 버튼 상태는 별도 타이머(_refresh_web_button_states)로 주기적으로 체크하므로 여기서 호출하지 않음
 
     def populate_process_list_slot(self):

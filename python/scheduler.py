@@ -304,7 +304,13 @@ class Scheduler:
                 )
                 self.notified_daily_reset_tasks.add(notification_key)
 
-    def run_all_checks(self):
+    def run_all_checks(self) -> bool:
+        """모든 스케줄러 검사를 실행하고, 프로세스 상태의 시각적 변경 여부를 반환합니다."""
+        initial_statuses = {
+            p.id: self.determine_process_visual_status(p, datetime.datetime.now(), self.data_manager.global_settings)
+            for p in self.data_manager.managed_processes
+        }
+
         current_time_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         print(f"\n[{current_time_str}] 스케줄러 검사 실행...")
         self.check_daily_reset_tasks()
@@ -312,6 +318,17 @@ class Scheduler:
         self.check_mandatory_times()
         self.check_user_cycles()
         print(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 스케줄러 검사 완료.")
+
+        # 검사 실행 후 상태를 다시 확인하여 변경 여부 감지
+        final_statuses = {
+            p.id: self.determine_process_visual_status(p, datetime.datetime.now(), self.data_manager.global_settings)
+            for p in self.data_manager.managed_processes
+        }
+
+        if initial_statuses != final_statuses:
+            return True # 상태 변경됨
+        
+        return False # 상태 변경 없음
 
 def example_global_on_click_handler(received_task_id: Optional[str]):
     """ Example handler for notification clicks, for testing purposes. """
