@@ -12,12 +12,7 @@ call .\.venv\Scripts\activate
 
 :: PyInstaller 실행
 :: --noconfirm: build 폴더가 이미 있을 경우 덮어쓰기 전 묻지 않음
-pyinstaller --noconfirm --onefile --windowed ^
-    --icon="img\app_icon.ico" ^
-    --distpath="release" ^
-    --workpath="build" ^
-    --add-data="img;img" ^
-    python\homework_helper.pyw
+pyinstaller --noconfirm --onefile --windowed --icon="img\app_icon.ico" --distpath="release" --workpath="build" --add-data="img;img" --add-data="font;font" python\homework_helper.pyw
 
 :: requirements.txt 업데이트
 pip freeze > requirements.txt

@@ -72,8 +72,8 @@ class MainWindow(QMainWindow):
         self.scheduler = Scheduler(self.data_manager, self.system_notifier, self.process_monitor) # 스케줄러 객체 생성
 
         self.setWindowTitle(QApplication.applicationName() or "숙제 관리자") # 창 제목 설정
-        self.setMinimumWidth(500) # 최소 너비 설정
-        self.setGeometry(100, 100, 500, 400) # 창 초기 위치 및 크기 설정 (고정 너비)
+        self.setMinimumWidth(400) # 최소 너비 설정
+        self.setGeometry(100, 100, 400, 300) # 창 초기 위치 및 크기 설정 (고정 너비)
         self._set_window_icon() # 창 아이콘 설정
         self.tray_manager = TrayManager(self) # 트레이 아이콘 관리자 생성
         self._create_menu_bar() # 메뉴 바 생성
@@ -270,6 +270,7 @@ class MainWindow(QMainWindow):
                 border: none;
                 background: transparent;
                 margin-top: 6px;
+                margin-right: 6px;
             }
             QCheckBox::indicator {
                 width: 13px;
@@ -881,10 +882,10 @@ class MainWindow(QMainWindow):
         # 창 너비 결정 (고정 너비 + 웹 버튼이 있을 때만 추가)
         if web_button_count > 0:
             # 웹 버튼이 있을 때: 기본 너비 + 웹 버튼 영역
-            target_width = 600  # 웹 버튼이 있을 때의 고정 너비
+            target_width = 400  # 웹 버튼이 있을 때의 고정 너비
         else:
             # 웹 버튼이 없을 때: 기본 너비
-            target_width = 500  # 웹 버튼이 없을 때의 고정 너비
+            target_width = 300  # 웹 버튼이 없을 때의 고정 너비
         
         # 창 높이 계산
         # - 상단 버튼 영역 높이: 약 35px
@@ -924,9 +925,9 @@ class MainWindow(QMainWindow):
         
         # 창 너비 결정 (최초 창 너비보다 작은 값으로는 축소되지 않음)
         if web_button_count > 0:
-            target_width = 600  # 웹 버튼이 있을 때의 고정 너비
+            target_width = 400  # 웹 버튼이 있을 때의 고정 너비
         else:
-            target_width = 500  # 웹 버튼이 없을 때의 고정 너비 (최초 창 너비)
+            target_width = 300  # 웹 버튼이 없을 때의 고정 너비 (최초 창 너비)
         
         # 현재 너비가 목표 너비와 다르면 조절
         current_width = self.width()
@@ -1279,7 +1280,7 @@ class MainWindow(QMainWindow):
             print("창 크기 조절 잠금 활성화됨")
         else:
             # 창 크기 조절 허용 (기본 동작)
-            self.setMinimumSize(500, 0)  # 원래 최소 너비만 유지
+            self.setMinimumSize(300, 0)  # 원래 최소 너비만 유지
             self.setMaximumSize(16777215, 16777215)  # 최대 크기 해제
             print("창 크기 조절 잠금 비활성화됨")
 
@@ -1293,6 +1294,20 @@ def start_main_application(instance_manager: SingleInstanceApplication):
     app = QApplication(sys.argv)
     app.setApplicationName("숙제 관리자") # 애플리케이션 이름 설정
     app.setOrganizationName("HomeworkHelperOrg") # 조직 이름 설정 (설정 파일 경로 등에 사용될 수 있음)
+
+    # --- 폰트 설정 ---
+    font_path_ttf = get_bundle_resource_path(r"font\NEXONLv1GothicRegular.ttf")
+    if os.path.exists(font_path_ttf):
+        font_id = QFontDatabase.addApplicationFont(font_path_ttf)
+        if font_id != -1:
+            font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
+            app.setFont(QFont(font_family))
+            print(f"폰트 로드 성공: {font_family}")
+        else:
+            print("폰트 로드 실패: QFontDatabase.addApplicationFont()가 -1을 반환했습니다.")
+    else:
+        print(f"폰트 파일 없음: {font_path_ttf}")
+    
     app.setQuitOnLastWindowClosed(False) # 마지막 창이 닫혀도 애플리케이션 종료되지 않도록 설정 (트레이 아이콘 사용 시 필수)
 
     # 데이터 저장 폴더 경로 설정
