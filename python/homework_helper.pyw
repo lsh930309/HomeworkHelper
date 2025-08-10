@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QLabel, QProgressBar
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QUrl, QEvent, QSize
-from PyQt6.QtGui import QAction, QIcon, QColor, QDesktopServices
+from PyQt6.QtGui import QAction, QIcon, QColor, QDesktopServices, QFontDatabase, QFont
 
 # --- 로컬 모듈 임포트 ---
 from dialogs import ProcessDialog, GlobalSettingsDialog, NumericTableWidgetItem, WebShortcutDialog
@@ -72,8 +72,8 @@ class MainWindow(QMainWindow):
         self.scheduler = Scheduler(self.data_manager, self.system_notifier, self.process_monitor) # 스케줄러 객체 생성
 
         self.setWindowTitle(QApplication.applicationName() or "숙제 관리자") # 창 제목 설정
-        self.setMinimumWidth(400) # 최소 너비 설정
-        self.setGeometry(100, 100, 400, 300) # 창 초기 위치 및 크기 설정 (고정 너비)
+        self.setMinimumWidth(450) # 최소 너비 설정
+        self.setGeometry(100, 100, 450, 300) # 창 초기 위치 및 크기 설정 (고정 너비)
         self._set_window_icon() # 창 아이콘 설정
         self.tray_manager = TrayManager(self) # 트레이 아이콘 관리자 생성
         self._create_menu_bar() # 메뉴 바 생성
@@ -270,6 +270,7 @@ class MainWindow(QMainWindow):
                 border: none;
                 background: transparent;
                 margin-top: 6px;
+                margin-left: 6px;
                 margin-right: 6px;
             }
             QCheckBox::indicator {
@@ -1301,7 +1302,7 @@ def start_main_application(instance_manager: SingleInstanceApplication):
         font_id = QFontDatabase.addApplicationFont(font_path_ttf)
         if font_id != -1:
             font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
-            app.setFont(QFont(font_family))
+            app.setFont(QFont(font_family, 10))
             print(f"폰트 로드 성공: {font_family}")
         else:
             print("폰트 로드 실패: QFontDatabase.addApplicationFont()가 -1을 반환했습니다.")
