@@ -6,6 +6,7 @@ from typing import Optional, Dict, Set, Tuple
 from data_manager import DataManager
 from data_models import ManagedProcess, GlobalSettings
 from notifier import Notifier
+from process_monitor import ProcessMonitor # ProcessMonitor 클래스 추가
 
 # 프로세스 상태를 나타내는 상수 (문자열 반환용)
 PROC_STATE_INCOMPLETE = "미완료"
@@ -13,16 +14,15 @@ PROC_STATE_COMPLETED = "완료됨"
 PROC_STATE_RUNNING = "실행중"
 
 class Scheduler:
-    def __init__(self, data_manager: DataManager, notifier: Notifier, process_monitor_ref=None): # process_monitor 참조 추가 (선택적)
+    def __init__(self, data_manager: DataManager, notifier: Notifier, process_monitor: ProcessMonitor):
         self.data_manager = data_manager
         self.notifier = notifier
-        # process_monitor_ref는 MainWindow에서 ProcessMonitor 인스턴스를 받아오기 위함입니다.
-        # MainWindow에서 Scheduler 생성 시 self.process_monitor를 전달해야 합니다.
-        # 또는, ProcessMonitor의 active_monitored_processes를 직접 참조하는 대신,
-        # ManagedProcess 객체에 is_currently_running 같은 플래그를 ProcessMonitor가 업데이트하고,
-        # Scheduler는 그 플래그를 읽는 방식도 가능합니다. 여기서는 직접 참조를 가정합니다.
-        self.process_monitor = process_monitor_ref # MainWindow로부터 ProcessMonitor 인스턴스를 받아 저장
-
+        self.process_monitor = process_monitor
+        
+        # 상태 변경 시 호출할 콜백 함수 (메인 윈도우에서 설정)
+        self.status_change_callback = None
+        
+        # 알림 중복 방지를 위한 추적 변수들
         self.already_notified_mandatory_today: Set[Tuple[str, str, str]] = set()
         self.notified_cycle_deadlines: Dict[str, float] = {}
         self.notified_sleep_corrected_tasks: Dict[Tuple[str, float], bool] = {}
@@ -326,6 +326,9 @@ class Scheduler:
         }
 
         if initial_statuses != final_statuses:
+            # 상태 변경 시 콜백 함수 호출
+            if self.status_change_callback:
+                self.status_change_callback()
             return True # 상태 변경됨
         
         return False # 상태 변경 없음

@@ -70,6 +70,9 @@ class MainWindow(QMainWindow):
             self.system_notifier.main_window_activated_callback = self.gui_notification_handler.process_system_notification_activation
 
         self.scheduler = Scheduler(self.data_manager, self.system_notifier, self.process_monitor) # 스케줄러 객체 생성
+        
+        # 스케줄러의 상태 변경 콜백 함수 설정
+        self.scheduler.status_change_callback = self._refresh_status_columns_immediate
 
         self.setWindowTitle(QApplication.applicationName() or "숙제 관리자") # 창 제목 설정
         self.setMinimumWidth(450) # 최소 너비 설정
@@ -159,9 +162,15 @@ class MainWindow(QMainWindow):
         self.monitor_timer = QTimer(self); self.monitor_timer.timeout.connect(self.run_process_monitor_check); self.monitor_timer.start(1000) # 프로세스 모니터 타이머 (1초)
         self.scheduler_timer = QTimer(self); self.scheduler_timer.timeout.connect(self.run_scheduler_check); self.scheduler_timer.start(1000) # 스케줄러 타이머 (1초)
 
+        # 웹 버튼 상태 새로고침 타이머
         self.web_button_refresh_timer = QTimer(self) # 웹 버튼 상태 새로고침 타이머
         self.web_button_refresh_timer.timeout.connect(self._refresh_web_button_states) # 타이머 타임아웃 시그널 연결
         self.web_button_refresh_timer.start(1000 * 60) # 1분마다 웹 버튼 상태 갱신 (1000ms * 60)
+
+        # 상태 컬럼 자동 업데이트 타이머
+        self.status_column_refresh_timer = QTimer(self) # 상태 컬럼 자동 업데이트 타이머
+        self.status_column_refresh_timer.timeout.connect(self._refresh_status_columns) # 타이머 타임아웃 시그널 연결
+        self.status_column_refresh_timer.start(1000 * 30) # 30초마다 상태 컬럼 갱신 (1000ms * 30)
 
         # 프로그레스 바 실시간 갱신 타이머
         self.progress_bar_refresh_timer = QTimer(self)
@@ -688,6 +697,66 @@ class MainWindow(QMainWindow):
                         state = self._determine_web_button_state(shortcut, current_dt) # 상태 결정
                         self._apply_button_style(button, state) # 스타일 적용
 
+    def _refresh_status_columns(self):
+        """테이블의 상태 컬럼만 새로고침합니다."""
+        current_dt = datetime.datetime.now()
+        gs = self.data_manager.global_settings
+        status_changes = 0
+        
+        for r in range(self.process_table.rowCount()):
+            # 이름 컬럼에서 프로세스 ID 가져오기
+            name_item = self.process_table.item(r, self.COL_NAME)
+            if not name_item:
+                continue
+            process_id = name_item.data(Qt.ItemDataRole.UserRole)
+            if not process_id:
+                continue
+            
+            # 프로세스 정보 가져오기
+            process = self.data_manager.get_process_by_id(process_id)
+            if not process:
+                continue
+            
+            # 새로운 상태 결정
+            new_status = self.scheduler.determine_process_visual_status(process, current_dt, gs)
+            
+            # 상태 컬럼 아이템 가져오기
+            status_item = self.process_table.item(r, self.COL_STATUS)
+            if not status_item:
+                continue
+            
+            # 상태가 변경된 경우에만 업데이트
+            if status_item.text() != new_status:
+                old_status = status_item.text()
+                status_item.setText(new_status)
+                status_changes += 1
+                
+                # 상태에 따른 배경색 설정
+                palette = self.process_table.palette()
+                df_bg, df_fg = palette.base(), palette.text()
+                
+                status_item.setBackground(df_bg)  # 기본 배경색으로 초기화
+                status_item.setForeground(df_fg)  # 기본 글자색으로 초기화
+                
+                if new_status == PROC_STATE_RUNNING:
+                    status_item.setBackground(self.COLOR_RUNNING)
+                    status_item.setForeground(QColor("black"))
+                elif new_status == PROC_STATE_INCOMPLETE:
+                    status_item.setBackground(self.COLOR_INCOMPLETE)
+                elif new_status == PROC_STATE_COMPLETED:
+                    status_item.setBackground(self.COLOR_COMPLETED)
+                
+                # 상태 변경 로그 출력
+                print(f"[{current_dt.strftime('%H:%M:%S')}] 상태 변경: '{process.name}' {old_status} → {new_status}")
+        
+        # 상태 변경이 있었을 때만 로그 출력
+        if status_changes > 0:
+            print(f"[{current_dt.strftime('%H:%M:%S')}] 상태 컬럼 새로고침 완료: {status_changes}개 항목 상태 변경됨")
+
+    def _refresh_status_columns_immediate(self):
+        """상태 컬럼을 즉시 새로고침합니다 (중요한 시각 변경 시 호출)."""
+        self._refresh_status_columns()
+
     def _load_and_display_web_buttons(self):
         """저장된 웹 바로가기 정보를 불러와 동적 버튼으로 UI에 표시합니다."""
         self._clear_layout(self.dynamic_web_buttons_layout) # 기존 버튼들 모두 제거
@@ -833,6 +902,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'scheduler_timer') and self.scheduler_timer.isActive(): self.scheduler_timer.stop()
         if hasattr(self, 'web_button_refresh_timer') and self.web_button_refresh_timer.isActive():
             self.web_button_refresh_timer.stop(); print("웹 버튼 상태 새로고침 타이머 중지됨.")
+        if hasattr(self, 'status_column_refresh_timer') and self.status_column_refresh_timer.isActive():
+            self.status_column_refresh_timer.stop(); print("상태 컬럼 자동 업데이트 타이머 중지됨.")
         # 트레이 아이콘 숨기기
         if hasattr(self, 'tray_manager') and self.tray_manager: self.tray_manager.hide_tray_icon()
         # 인스턴스 매니저 리소스 정리 (단일 인스턴스 실행 관련)
