@@ -2,7 +2,92 @@ import sys
 import datetime
 import os
 import functools
+import ctypes
+import subprocess
 from typing import List, Optional, Dict, Any
+
+# Windows 전용 모듈 임포트 (선택적)
+if os.name == 'nt':
+    try:
+        import win32api
+        import win32security
+        WINDOWS_SECURITY_AVAILABLE = True
+    except ImportError:
+        WINDOWS_SECURITY_AVAILABLE = False
+else:
+    WINDOWS_SECURITY_AVAILABLE = False
+
+def is_admin():
+    """현재 프로세스가 관리자 권한으로 실행되고 있는지 확인합니다."""
+    if not os.name == 'nt':
+        return False
+    
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+
+def run_as_admin():
+    """현재 스크립트를 관리자 권한으로 재시작합니다."""
+    if not os.name == 'nt':
+        return False
+    
+    try:
+        if getattr(sys, 'frozen', False):
+            # PyInstaller로 패키징된 경우
+            script = sys.executable
+        else:
+            # 일반 파이썬 스크립트인 경우
+            script = sys.argv[0]
+        
+        # ShellExecuteW를 사용하여 관리자 권한으로 재시작
+        shell32 = ctypes.windll.shell32
+        ret = shell32.ShellExecuteW(None, "runas", script, None, None, 1)
+        
+        if ret > 32:
+            print("관리자 권한으로 재시작을 요청했습니다.")
+            return True
+        else:
+            print(f"관리자 권한으로 재시작 요청 실패. 오류 코드: {ret}")
+            return False
+    except Exception as e:
+        print(f"관리자 권한으로 재시작 중 오류 발생: {e}")
+        return False
+
+def check_admin_requirement():
+    """관리자 권한이 필요한지 확인하고, 필요시 자동으로 재시작합니다."""
+    if not os.name == 'nt':
+        return False
+    
+    # 글로벌 설정 파일을 먼저 확인하여 관리자 권한 실행 설정을 확인
+    try:
+        # 실행 파일 기준 homework_helper_data 경로 계산
+        if getattr(sys, 'frozen', False):
+            base_path = os.path.dirname(sys.executable)
+        else:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        
+        data_folder = os.path.join(base_path, "homework_helper_data")
+        settings_file_path = os.path.join(data_folder, "global_settings.json")
+        
+        if os.path.exists(settings_file_path):
+            import json
+            with open(settings_file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                run_as_admin_setting = data.get('run_as_admin', False)
+                
+                if run_as_admin_setting and not is_admin():
+                    print("글로벌 설정에서 관리자 권한으로 실행이 활성화되어 있습니다.")
+                    print("관리자 권한으로 재시작을 시도합니다...")
+                    if run_as_admin():
+                        sys.exit(0)  # 현재 인스턴스 종료
+                    else:
+                        print("관리자 권한으로 재시작에 실패했습니다. 일반 권한으로 계속 실행합니다.")
+                        return False
+    except Exception as e:
+        print(f"관리자 권한 설정 확인 중 오류 발생: {e}")
+    
+    return False
 
 # PyQt6 임포트
 from PyQt6.QtWidgets import (
@@ -54,7 +139,7 @@ class MainWindow(QMainWindow):
         MainWindow.INSTANCE = self
         self.data_manager = data_manager
         self._instance_manager = instance_manager # 종료 시 정리를 위해 인스턴스 매니저 참조 저장
-        self.launcher = Launcher()
+        self.launcher = Launcher(run_as_admin=self.data_manager.global_settings.run_as_admin)
 
         # statusBar, menuBar 명시적 생성
         self.setStatusBar(QStatusBar(self))
@@ -332,6 +417,10 @@ class MainWindow(QMainWindow):
             upd_gs = dlg.get_updated_settings() # 업데이트된 설정 가져오기
             self.data_manager.global_settings = upd_gs # 데이터 매니저에 설정 업데이트
             self.data_manager.save_global_settings() # 설정 저장
+            
+            # Launcher 인스턴스의 관리자 권한 설정 업데이트
+            self.launcher.run_as_admin = upd_gs.run_as_admin
+            
             status_bar = self.statusBar()
             if status_bar:
                 status_bar.showMessage("전역 설정 저장됨.", 3000) # 상태 표시줄 메시지
@@ -1367,6 +1456,11 @@ def start_main_application(instance_manager: SingleInstanceApplication):
     app.setApplicationName("숙제 관리자") # 애플리케이션 이름 설정
     app.setOrganizationName("HomeworkHelperOrg") # 조직 이름 설정 (설정 파일 경로 등에 사용될 수 있음)
 
+    # 현재 관리자 권한 상태 로그
+    if os.name == 'nt':
+        admin_status = "관리자 권한으로 실행 중" if is_admin() else "일반 사용자 권한으로 실행 중"
+        print(f"현재 실행 상태: {admin_status}")
+
     # --- 폰트 설정 ---
     font_path_ttf = get_bundle_resource_path(r"font\NEXONLv1GothicRegular.ttf")
     if os.path.exists(font_path_ttf):
@@ -1400,6 +1494,9 @@ def start_main_application(instance_manager: SingleInstanceApplication):
     sys.exit(exit_code) # 종료 코드로 시스템 종료
 
 if __name__ == "__main__":
+    # 관리자 권한 요구사항 확인 및 자동 재시작
+    check_admin_requirement()
+    
     # 단일 인스턴스 실행 확인 로직을 통해 애플리케이션 시작
     run_with_single_instance_check(
         application_name="숙제 관리자", # QApplication.applicationName()과 일치해야 IPC가 제대로 동작

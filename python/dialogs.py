@@ -347,6 +347,7 @@ class GlobalSettingsDialog(QDialog):
         self.cycle_advance_hours_spinbox.setSuffix(" 시간 전")
         self.run_on_startup_checkbox = QCheckBox("Windows 시작 시 자동 실행")
         self.lock_window_resize_checkbox = QCheckBox("창 크기 조절 잠금")
+        self.run_as_admin_checkbox = QCheckBox("관리자 권한으로 실행 (UAC 프롬프트 없이)")
 
         self.form_layout.addRow("수면 시작 시각:", self.sleep_start_edit)
         self.form_layout.addRow("수면 종료 시각:", self.sleep_end_edit)
@@ -354,6 +355,7 @@ class GlobalSettingsDialog(QDialog):
         self.form_layout.addRow("일반 주기 만료 알림 (마감 기준):", self.cycle_advance_hours_spinbox)
         self.form_layout.addRow(self.run_on_startup_checkbox)
         self.form_layout.addRow(self.lock_window_resize_checkbox)
+        self.form_layout.addRow(self.run_as_admin_checkbox)
 
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.form_layout.addRow(self.button_box)
@@ -370,6 +372,7 @@ class GlobalSettingsDialog(QDialog):
         self.cycle_advance_hours_spinbox.setValue(self.current_settings.cycle_deadline_advance_notify_hours)
         self.run_on_startup_checkbox.setChecked(self.current_settings.run_on_startup)
         self.lock_window_resize_checkbox.setChecked(self.current_settings.lock_window_resize)
+        self.run_as_admin_checkbox.setChecked(self.current_settings.run_as_admin)
 
     def get_updated_settings(self) -> GlobalSettings:
         return GlobalSettings(
@@ -378,7 +381,8 @@ class GlobalSettingsDialog(QDialog):
             sleep_correction_advance_notify_hours=self.sleep_correction_hours_spinbox.value(),
             cycle_deadline_advance_notify_hours=self.cycle_advance_hours_spinbox.value(),
             run_on_startup=self.run_on_startup_checkbox.isChecked(),
-            lock_window_resize=self.lock_window_resize_checkbox.isChecked()
+            lock_window_resize=self.lock_window_resize_checkbox.isChecked(),
+            run_as_admin=self.run_as_admin_checkbox.isChecked()
         )
         
 class WebShortcutDialog(QDialog):
