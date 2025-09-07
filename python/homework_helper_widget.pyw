@@ -4,9 +4,9 @@ import os
 import datetime
 from typing import Optional
 
-from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
-from PySide6.QtCore import QTimer, QSettings
-from PySide6.QtGui import QIcon, QAction
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
+from PyQt6.QtCore import QTimer, QSettings
+from PyQt6.QtGui import QIcon, QAction
 
 # 기존 모듈들 임포트
 from data_manager import DataManager

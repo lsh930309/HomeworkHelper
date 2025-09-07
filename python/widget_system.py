@@ -5,7 +5,7 @@ import datetime
 from typing import Optional, Dict, Any, Callable
 from enum import Enum
 
-from PySide6.QtWidgets import (
+from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QFrame, QGraphicsOpacityEffect, QSizePolicy,
     QSystemTrayIcon, QMenu, QMessageBox, QSlider, QSpinBox,
@@ -13,11 +13,11 @@ from PySide6.QtWidgets import (
     QScrollArea, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QProgressBar, QAbstractScrollArea
 )
-from PySide6.QtCore import (
+from PyQt6.QtCore import (
     Qt, QTimer, QPropertyAnimation, QEasingCurve, QRect, 
-    QPoint, QSize, Signal, QSettings, QThread, pyqtSignal
+    QPoint, QSize, pyqtSignal, QSettings, QThread
 )
-from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QIcon
+from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QIcon
 
 # 기존 모듈들 임포트
 from data_manager import DataManager
@@ -69,9 +69,9 @@ class WidgetHandle(QWidget):
     """화면 가장자리의 위젯 핸들"""
     
     # 시그널 정의
-    hover_entered = Signal()
-    hover_left = Signal()
-    position_changed = Signal(WidgetPosition)
+    hover_entered = pyqtSignal()
+    hover_left = pyqtSignal()
+    position_changed = pyqtSignal(WidgetPosition)
     
     def __init__(self, position: WidgetPosition, settings: WidgetSettings):
         super().__init__()
@@ -193,12 +193,12 @@ class WidgetHandle(QWidget):
         """마우스 누름 이벤트"""
         if event.button() == Qt.MouseButton.LeftButton and not self.settings.is_position_locked:
             self.is_dragging = True
-            self.drag_start_pos = event.globalPosition().toPoint() - self.pos()
+            self.drag_start_pos = event.globalPos() - self.pos()
             
     def mouseMoveEvent(self, event):
         """마우스 이동 이벤트"""
         if self.is_dragging and not self.settings.is_position_locked:
-            new_pos = event.globalPosition().toPoint() - self.drag_start_pos
+            new_pos = event.globalPos() - self.drag_start_pos
             self.move(new_pos)
             
     def mouseReleaseEvent(self, event):
@@ -238,9 +238,9 @@ class WidgetHandle(QWidget):
             if center_y < screen_center_y:
                 # 우상단
                 if (screen_geometry.width() - center_x) < center_y:
-                    new_position = WidgetPosition.TOP
-                else:
                     new_position = WidgetPosition.RIGHT
+                else:
+                    new_position = WidgetPosition.TOP
             else:
                 # 우하단
                 if (screen_geometry.width() - center_x) < (screen_geometry.height() - center_y):
