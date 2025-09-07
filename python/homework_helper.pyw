@@ -685,14 +685,17 @@ class MainWindow(QMainWindow):
         if not p_launch.launch_path: QMessageBox.warning(self, "오류", f"'{p_launch.name}' 실행 경로 없음."); return
 
         if self.launcher.launch_process(p_launch.launch_path): # 프로세스 실행 시도
-            self.system_notifier.send_notification(title="프로세스 실행", message=f"'{p_launch.name}' 실행함.", task_id_to_highlight=None)
+            # 설정에 따라 실행 성공 알림 전송
+            if self.data_manager.global_settings.notify_on_launch_success:
+                self.system_notifier.send_notification(title="프로세스 실행", message=f"'{p_launch.name}' 실행함.", task_id_to_highlight=None)
             status_bar = self.statusBar()
             if status_bar:
                 status_bar.showMessage(f"'{p_launch.name}' 실행 시도.", 3000)
             # 실행 성공 시 즉시 상태 업데이트
             self.update_process_statuses_only()
         else: # 실행 실패 시
-            self.system_notifier.send_notification(title="실행 실패", message=f"'{p_launch.name}' 실행 실패. 로그 확인.", task_id_to_highlight=None)
+            if self.data_manager.global_settings.notify_on_launch_failure:
+                self.system_notifier.send_notification(title="실행 실패", message=f"'{p_launch.name}' 실행 실패. 로그 확인.", task_id_to_highlight=None)
             status_bar = self.statusBar()
             if status_bar:
                 status_bar.showMessage(f"'{p_launch.name}' 실행 실패.", 3000)

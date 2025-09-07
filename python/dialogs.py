@@ -348,6 +348,13 @@ class GlobalSettingsDialog(QDialog):
         self.run_on_startup_checkbox = QCheckBox("Windows 시작 시 자동 실행")
         self.lock_window_resize_checkbox = QCheckBox("창 크기 조절 잠금")
         self.run_as_admin_checkbox = QCheckBox("관리자 권한으로 실행 (UAC 프롬프트 없이)")
+        # --- 알림 설정 체크박스들 ---
+        self.notify_on_launch_success_checkbox = QCheckBox("프로세스 실행 성공 시 알림")
+        self.notify_on_launch_failure_checkbox = QCheckBox("프로세스 실행 실패 시 알림")
+        self.notify_on_mandatory_time_checkbox = QCheckBox("고정 접속 시간 알림")
+        self.notify_on_cycle_deadline_checkbox = QCheckBox("사용자 주기 만료 임박 알림")
+        self.notify_on_sleep_correction_checkbox = QCheckBox("수면 보정(잠들기 전 미리) 알림")
+        self.notify_on_daily_reset_checkbox = QCheckBox("일일 과제 마감 임박 알림")
 
         self.form_layout.addRow("수면 시작 시각:", self.sleep_start_edit)
         self.form_layout.addRow("수면 종료 시각:", self.sleep_end_edit)
@@ -356,6 +363,14 @@ class GlobalSettingsDialog(QDialog):
         self.form_layout.addRow(self.run_on_startup_checkbox)
         self.form_layout.addRow(self.lock_window_resize_checkbox)
         self.form_layout.addRow(self.run_as_admin_checkbox)
+        # 알림 설정 섹션
+        self.form_layout.addRow(QLabel("알림 설정:"))
+        self.form_layout.addRow(self.notify_on_launch_success_checkbox)
+        self.form_layout.addRow(self.notify_on_launch_failure_checkbox)
+        self.form_layout.addRow(self.notify_on_mandatory_time_checkbox)
+        self.form_layout.addRow(self.notify_on_cycle_deadline_checkbox)
+        self.form_layout.addRow(self.notify_on_sleep_correction_checkbox)
+        self.form_layout.addRow(self.notify_on_daily_reset_checkbox)
 
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.form_layout.addRow(self.button_box)
@@ -373,6 +388,13 @@ class GlobalSettingsDialog(QDialog):
         self.run_on_startup_checkbox.setChecked(self.current_settings.run_on_startup)
         self.lock_window_resize_checkbox.setChecked(self.current_settings.lock_window_resize)
         self.run_as_admin_checkbox.setChecked(self.current_settings.run_as_admin)
+        # 알림 설정
+        self.notify_on_launch_success_checkbox.setChecked(self.current_settings.notify_on_launch_success)
+        self.notify_on_launch_failure_checkbox.setChecked(self.current_settings.notify_on_launch_failure)
+        self.notify_on_mandatory_time_checkbox.setChecked(self.current_settings.notify_on_mandatory_time)
+        self.notify_on_cycle_deadline_checkbox.setChecked(self.current_settings.notify_on_cycle_deadline)
+        self.notify_on_sleep_correction_checkbox.setChecked(self.current_settings.notify_on_sleep_correction)
+        self.notify_on_daily_reset_checkbox.setChecked(self.current_settings.notify_on_daily_reset)
 
     def get_updated_settings(self) -> GlobalSettings:
         return GlobalSettings(
@@ -382,7 +404,13 @@ class GlobalSettingsDialog(QDialog):
             cycle_deadline_advance_notify_hours=self.cycle_advance_hours_spinbox.value(),
             run_on_startup=self.run_on_startup_checkbox.isChecked(),
             lock_window_resize=self.lock_window_resize_checkbox.isChecked(),
-            run_as_admin=self.run_as_admin_checkbox.isChecked()
+            run_as_admin=self.run_as_admin_checkbox.isChecked(),
+            notify_on_launch_success=self.notify_on_launch_success_checkbox.isChecked(),
+            notify_on_launch_failure=self.notify_on_launch_failure_checkbox.isChecked(),
+            notify_on_mandatory_time=self.notify_on_mandatory_time_checkbox.isChecked(),
+            notify_on_cycle_deadline=self.notify_on_cycle_deadline_checkbox.isChecked(),
+            notify_on_sleep_correction=self.notify_on_sleep_correction_checkbox.isChecked(),
+            notify_on_daily_reset=self.notify_on_daily_reset_checkbox.isChecked()
         )
         
 class WebShortcutDialog(QDialog):
