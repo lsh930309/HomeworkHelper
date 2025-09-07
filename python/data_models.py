@@ -53,7 +53,13 @@ class GlobalSettings:
                  run_on_startup: bool = False,
                  lock_window_resize: bool = False,
                  always_on_top: bool = False,
-                 run_as_admin: bool = False): # <<< 관리자 권한 실행 옵션 추가
+                 run_as_admin: bool = False,
+                 notify_on_launch_success: bool = True,
+                 notify_on_launch_failure: bool = True,
+                 notify_on_mandatory_time: bool = True,
+                 notify_on_cycle_deadline: bool = True,
+                 notify_on_sleep_correction: bool = True,
+                 notify_on_daily_reset: bool = True): # 알림 설정 옵션 추가
         
         self.sleep_start_time_str = sleep_start_time_str
         self.sleep_end_time_str = sleep_end_time_str
@@ -63,6 +69,13 @@ class GlobalSettings:
         self.lock_window_resize = lock_window_resize
         self.always_on_top = always_on_top
         self.run_as_admin = run_as_admin # <<< 새 속성 초기화
+        # 알림 옵션
+        self.notify_on_launch_success = notify_on_launch_success
+        self.notify_on_launch_failure = notify_on_launch_failure
+        self.notify_on_mandatory_time = notify_on_mandatory_time
+        self.notify_on_cycle_deadline = notify_on_cycle_deadline
+        self.notify_on_sleep_correction = notify_on_sleep_correction
+        self.notify_on_daily_reset = notify_on_daily_reset
 
     def to_dict(self) -> Dict:
         return self.__dict__
@@ -81,6 +94,19 @@ class GlobalSettings:
         # 이전 버전과의 호환성을 위해 run_as_admin이 없을 경우 기본값 False 사용
         if 'run_as_admin' not in data:
             data['run_as_admin'] = False
+        # 알림 옵션들 역호환 기본값 추가
+        if 'notify_on_launch_success' not in data:
+            data['notify_on_launch_success'] = True
+        if 'notify_on_launch_failure' not in data:
+            data['notify_on_launch_failure'] = True
+        if 'notify_on_mandatory_time' not in data:
+            data['notify_on_mandatory_time'] = True
+        if 'notify_on_cycle_deadline' not in data:
+            data['notify_on_cycle_deadline'] = True
+        if 'notify_on_sleep_correction' not in data:
+            data['notify_on_sleep_correction'] = True
+        if 'notify_on_daily_reset' not in data:
+            data['notify_on_daily_reset'] = True
         return cls(**data)
     
 class WebShortcut:

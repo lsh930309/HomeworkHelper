@@ -161,13 +161,15 @@ class Scheduler:
                         notification_key = (process.id, mandatory_time_str, today_date_str)
                         if notification_key not in self.already_notified_mandatory_today:
                             print(f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] 고정 접속 시간 알림: '{process.name}' - {mandatory_time_str}")
-                            self.notifier.send_notification(
-                                title=f"{process.name} - 접속 시간!",
-                                message=f"지금은 '{process.name}'의 고정 접속 시간({mandatory_time_str})입니다.",
-                                task_id_to_highlight=process.id,
-                                button_text="실행",
-                                button_action="run"
-                            )
+                            # 설정에 따라 고정 접속 시간 알림
+                            if self.data_manager.global_settings.notify_on_mandatory_time:
+                                self.notifier.send_notification(
+                                    title=f"{process.name} - 접속 시간!",
+                                    message=f"지금은 '{process.name}'의 고정 접속 시간({mandatory_time_str})입니다.",
+                                    task_id_to_highlight=process.id,
+                                    button_text="실행",
+                                    button_action="run"
+                                )
                             self.already_notified_mandatory_today.add(notification_key)
 
     def check_user_cycles(self): # (send_notification에서 on_click_callback 제거된 버전)
@@ -203,13 +205,14 @@ class Scheduler:
                             remaining_str = f"{minutes_remaining:.0f}분"
 
                         print(f"[{now_dt.strftime('%Y-%m-%d %H:%M:%S')}] 사용자 주기 만료 임박 알림: '{process.name}'. 마감: {deadline_dt.strftime('%H:%M')}")
-                        self.notifier.send_notification(
-                            title=f"{process.name} - 접속 권장",
-                            message=f"'{process.name}' 접속 주기가 약 {remaining_str} 후 만료됩니다. (마감: {deadline_dt.strftime('%H:%M')})",
-                            task_id_to_highlight=process.id,
-                            button_text="실행",
-                            button_action="run"
-                        )
+                        if self.data_manager.global_settings.notify_on_cycle_deadline:
+                            self.notifier.send_notification(
+                                title=f"{process.name} - 접속 권장",
+                                message=f"'{process.name}' 접속 주기가 약 {remaining_str} 후 만료됩니다. (마감: {deadline_dt.strftime('%H:%M')})",
+                                task_id_to_highlight=process.id,
+                                button_text="실행",
+                                button_action="run"
+                            )
                         self.notified_cycle_deadlines[process.id] = current_deadline_ts
                 elif now_dt >= deadline_dt:
                     # Deadline has passed, potentially clear notification status if needed for re-notification after next play
@@ -239,13 +242,14 @@ class Scheduler:
                     notification_key = (process.id, original_deadline_dt.timestamp())
                     if notification_key not in self.notified_sleep_corrected_tasks:
                         print(f"[{now_dt.strftime('%Y-%m-%d %H:%M:%S')}] 수면 보정 알림: '{process.name}'. 원래 마감: {original_deadline_dt.strftime('%H:%M')}")
-                        self.notifier.send_notification(
-                            title=f"{process.name} - 미리 접속 권장!",
-                            message=f"'{process.name}'의 다음 주기 마감({original_deadline_dt.strftime('%H:%M')})이 수면 시간({gs.sleep_start_time_str}~{gs.sleep_end_time_str}) 중입니다. 잠들기 전에 미리 접속하는 것이 좋습니다.",
-                            task_id_to_highlight=process.id,
-                            button_text="실행",
-                            button_action="run"
-                        )
+                        if self.data_manager.global_settings.notify_on_sleep_correction:
+                            self.notifier.send_notification(
+                                title=f"{process.name} - 미리 접속 권장!",
+                                message=f"'{process.name}'의 다음 주기 마감({original_deadline_dt.strftime('%H:%M')})이 수면 시간({gs.sleep_start_time_str}~{gs.sleep_end_time_str}) 중입니다. 잠들기 전에 미리 접속하는 것이 좋습니다.",
+                                task_id_to_highlight=process.id,
+                                button_text="실행",
+                                button_action="run"
+                            )
                         self.notified_sleep_corrected_tasks[notification_key] = True
                         # Also mark this as notified for regular cycle to avoid double notification
                         self.notified_cycle_deadlines[process.id] = original_deadline_dt.timestamp()
@@ -295,13 +299,14 @@ class Scheduler:
 
             if reminder_trigger_dt <= now_dt < current_server_day_end_dt:
                 print(f"[{now_dt.strftime('%Y-%m-%d %H:%M:%S')}] 일일 과제 마감 임박 알림: '{process.name}'. 서버 하루 마감: {current_server_day_end_dt.strftime('%H:%M')}")
-                self.notifier.send_notification(
-                    title=f"{process.name} - 일일 과제!",
-                    message=f"'{process.name}'의 오늘 서버 과제 마감({current_server_day_end_dt.strftime('%H:%M:%S')})이 다가옵니다. (오늘 플레이 기록 없음)",
-                    task_id_to_highlight=process.id,
-                    button_text="실행",
-                    button_action="run"
-                )
+                if self.data_manager.global_settings.notify_on_daily_reset:
+                    self.notifier.send_notification(
+                        title=f"{process.name} - 일일 과제!",
+                        message=f"'{process.name}'의 오늘 서버 과제 마감({current_server_day_end_dt.strftime('%H:%M:%S')})이 다가옵니다. (오늘 플레이 기록 없음)",
+                        task_id_to_highlight=process.id,
+                        button_text="실행",
+                        button_action="run"
+                    )
                 self.notified_daily_reset_tasks.add(notification_key)
 
     def run_all_checks(self) -> bool:
